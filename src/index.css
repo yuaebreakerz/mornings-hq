@@ -1,0 +1,80 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,500;1,600;1,700;1,800&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  
+  --color-brand-white: var(--brand-white);
+  --color-brand-purple: var(--brand-purple);
+  --color-brand-neon: var(--brand-neon);
+  
+  --color-slate-50: var(--slate-50);
+  --color-slate-100: var(--slate-100);
+  --color-slate-200: var(--slate-200);
+  --color-slate-500: var(--slate-500);
+  --color-slate-900: var(--slate-900);
+  
+  --color-emerald-50: #F4FDE1;
+  --color-emerald-100: #E9FBBE;
+  --color-emerald-400: #BAEB1E;
+  --color-emerald-500: #A8D61B;
+  --color-emerald-600: #8EBA17;
+}
+
+:root {
+  --brand-white: #FFFFFF;
+  --brand-purple: #5900BA;
+  --brand-neon: #BAEB1E;
+  
+  --slate-50: #F8FAFC;
+  --slate-100: #F1F5F9;
+  --slate-200: #E2E8F0;
+  --slate-500: #475569; /* Darkened from 64748B for better contrast as text-slate-500 */
+  --slate-900: #0F172A;
+}
+
+@layer base {
+  body {
+    @apply bg-slate-50 text-slate-900 font-sans antialiased transition-colors duration-300;
+  }
+}
+
+.glass-card {
+  @apply bg-white border border-slate-200/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] rounded-3xl transition-all duration-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] hover:-translate-y-0.5;
+}
+
+.sidebar-glass {
+  @apply bg-brand-purple border-r border-white/10;
+}
+
+.sidebar-link {
+  @apply flex items-center gap-3 px-4 py-3 rounded-2xl transition-all duration-300 text-white/80 hover:bg-white/10 hover:text-white;
+}
+
+.sidebar-link.active {
+  @apply bg-brand-neon text-brand-purple font-semibold shadow-lg shadow-brand-neon/20;
+}
+
+.btn-primary {
+  @apply bg-brand-purple text-white px-6 py-2.5 rounded-2xl text-sm font-bold shadow-lg shadow-brand-purple/20 transition-all duration-300 hover:bg-brand-purple/90 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50;
+}
+
+.btn-secondary {
+  @apply bg-brand-neon text-brand-purple px-6 py-2.5 rounded-2xl text-sm font-bold shadow-lg shadow-brand-neon/20 transition-all duration-300 hover:bg-brand-neon/90 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50;
+}
+
+.btn-outline {
+  @apply bg-white border border-slate-200 text-slate-700 px-6 py-2.5 rounded-2xl text-sm font-bold transition-all duration-300 hover:bg-slate-50 hover:border-brand-purple/30 hover:text-brand-purple active:scale-[0.98];
+}
+
+.input-field {
+  @apply w-full px-4 py-3 text-sm bg-white/50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-brand-purple/5 focus:border-brand-purple/30 transition-all duration-300;
+}
+
+/* Bento Grid Utilities */
+.bento-grid {
+  @apply grid grid-cols-12 gap-6 auto-rows-[100px];
+}
+
+

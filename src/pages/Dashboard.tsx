@@ -1,14 +1,22 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { 
   Loader2,
   Clock,
   Truck,
-  ArrowRight
+  ArrowRight,
+  TrendingUp,
+  DollarSign,
+  FileDown,
+  Calendar,
+  Award,
+  ShoppingBag,
+  BarChart2,
+  Info
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { productService } from '../services/googleService';
-import { cn } from '../lib/utils';
+import { cn, parseItems } from '../lib/utils';
 import { Link } from 'react-router-dom';
 import ReceiptGenerator from '../components/ReceiptGenerator';
 
@@ -20,6 +28,8 @@ export default function Dashboard() {
   const [heroContent, setHeroContent] = useState<any>(null);
 
   const [isOnline, setIsOnline] = useState<boolean | null>(null);
+  const [allOrders, setAllOrders] = useState<any[]>([]);
+  const [filterRange, setFilterRange] = useState<'today' | '7days' | 'month' | 'all'>('all');
 
   useEffect(() => {
     async function fetchDashboardData() {
@@ -52,6 +62,7 @@ export default function Dashboard() {
         
         // Calculate dynamic stats
         if (orders && Array.isArray(orders)) {
+          setAllOrders(orders);
           const today = new Date().toISOString().split('T')[0];
           const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
           
@@ -90,6 +101,87 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, []);
 
+  // Dynamic metrics calculator based on range selection
+  const financeStats = React.useMemo(() => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    const rangeMs = filterRange === 'today' ? 1 * 86400000 : filterRange === '7days' ? 7 * 86400000 : 30 * 86400000;
+    const sinceDate = new Date(Date.now() - rangeMs);
+
+    const filtered = allOrders.filter((o: any) => {
+      if (!o || !o.created_at) return false;
+      if (filterRange === 'all') return true;
+      
+      const orderDate = new Date(o.created_at);
+      const orderDateStr = o.created_at.split('T')[0];
+
+      if (filterRange === 'today') {
+        return orderDateStr === todayStr;
+      }
+      return orderDate >= sinceDate;
+    });
+
+    let totalCompletedRev = 0;
+    let totalPendingRev = 0;
+    let completedCount = 0;
+    let pendingCount = 0;
+
+    filtered.forEach((o: any) => {
+      const amt = Number(o.total_amount || 0);
+      if (o.status === 'completed' || o.status === 'selesai') {
+        totalCompletedRev += amt;
+        completedCount++;
+      } else if (o.status === 'pending' || o.status === 'confirmed' || o.status === 'preparing' || o.status === 'ready' || o.status === 'diproses' || o.status === 'siap') {
+        totalPendingRev += amt;
+        pendingCount++;
+      }
+    });
+
+    const averageOrderValue = completedCount > 0 ? Math.round(totalCompletedRev / completedCount) : 0;
+
+    return {
+      totalCompletedRev,
+      totalPendingRev,
+      completedCount,
+      pendingCount,
+      averageOrderValue,
+      totalCount: filtered.length
+    };
+  }, [allOrders, filterRange]);
+
+  // Top products calculator
+  const bestsellerProducts = React.useMemo(() => {
+    const productCounts: Record<string, { qty: number; revenue: number }> = {};
+    
+    allOrders.forEach((o: any) => {
+      // Aggregate for successfully completed or confirmed items to show popularity safely
+      if (o.status === 'completed' || o.status === 'confirmed' || o.status === 'preparing' || o.status === 'ready' || o.status === 'selesai') {
+        const items = parseItems(o.items);
+        items.forEach((item: any) => {
+          if (item && item.name) {
+            const name = item.name;
+            const qty = Number(item.qty || 0);
+            const price = Number(item.price || 0);
+            if (productCounts[name]) {
+              productCounts[name].qty += qty;
+              productCounts[name].revenue += qty * price;
+            } else {
+              productCounts[name] = { qty, revenue: qty * price };
+            }
+          }
+        });
+      }
+    });
+
+    return Object.entries(productCounts)
+      .map(([name, stats]) => ({
+        name,
+        qty: stats.qty,
+        revenue: stats.revenue
+      }))
+      .sort((a, b) => b.qty - a.qty)
+      .slice(0, 5); // top 5
+  }, [allOrders]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full min-h-[60vh]">
@@ -112,6 +204,71 @@ export default function Dashboard() {
     }
   };
 
+  const handleExportCSV = () => {
+    if (allOrders.length === 0) {
+      alert("Tidak ada data transaksi untuk diekspor!");
+      return;
+    }
+
+    try {
+      const headers = [
+        "Nomor Invoice",
+        "Nama Customer",
+        "No WhatsApp",
+        "Tanggal Transaksi",
+        "Tanggal Pengiriman",
+        "Jam Pengiriman",
+        "Metode Pengiriman",
+        "Alamat",
+        "Item Pesanan",
+        "Total Nominal (Rp)",
+        "Status",
+        "Catatan"
+      ];
+
+      const csvRows = [headers.join(",")];
+
+      allOrders.forEach((o: any) => {
+        const itemsStr = parseItems(o.items)
+          .map((item: any) => `${item.name} (${item.qty}x)`)
+          .join(" | ");
+
+        const createdDate = o.created_at ? format(new Date(o.created_at), 'yyyy-MM-dd HH:mm') : '-';
+        const deliveryDate = o.delivery_date ? format(new Date(o.delivery_date), 'yyyy-MM-dd') : '-';
+
+        const row = [
+          `"${o.order_number || o.id || ''}"`,
+          `"${(o.customer_name || '').replace(/"/g, '""')}"`,
+          `"${o.whatsapp_number || ''}"`,
+          `"${createdDate}"`,
+          `"${deliveryDate}"`,
+          `"${o.delivery_time || ''}"`,
+          `"${o.delivery_method || ''}"`,
+          `"${(o.delivery_address || '').replace(/"/g, '""').replace(/\n/g, ' ')}"`,
+          `"${itemsStr.replace(/"/g, '""')}"`,
+          o.total_amount || 0,
+          `"${o.status || ''}"`,
+          `"${(o.order_notes || '').replace(/"/g, '""').replace(/\n/g, ' ')}"`
+        ];
+
+        csvRows.push(row.join(","));
+      });
+
+      const csvString = csvRows.join("\n");
+      const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvString], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", `laporan-penjualan-mornings-${format(new Date(), 'yyyy-MM-dd')}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (e) {
+      console.error(e);
+      alert("Gagal mengekspor laporan: " + String(e));
+    }
+  };
+
   const statCards = [
     { label: 'Pesanan Selesai', value: stats?.completedCount || 0, color: 'text-emerald-600', bg: 'bg-emerald-50 shadow-emerald-200/20' },
     { label: "Pengiriman Hari Ini", value: stats?.todaysDeliveries || 0, color: 'text-brand-purple', bg: 'bg-brand-purple/5 shadow-brand-purple/20' },
@@ -121,7 +278,7 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
         <div className="flex items-center gap-3">
           <h2 className="text-lg sm:text-xl font-serif font-black text-slate-900">Dashboard</h2>
           <div className="flex items-center gap-2">
@@ -149,6 +306,142 @@ export default function Dashboard() {
                  isOnline === false ? 'API Error' : 'Checking...'}
               </span>
             </div>
+          </div>
+        </div>
+
+        <button 
+          onClick={handleExportCSV}
+          className="flex items-center gap-2 px-4 py-2.5 bg-brand-purple hover:bg-brand-purple/90 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-md shadow-brand-purple/10 cursor-pointer self-start sm:self-auto hover:scale-[1.01] active:scale-[0.99]"
+        >
+          <FileDown className="w-4 h-4 text-brand-neon animate-bounce" />
+          Ekspor CSV
+        </button>
+      </div>
+
+      {/* Financial & Best-Seller Analytics Row */}
+      <div className="grid grid-cols-12 gap-6">
+        {/* Financial Overview Card */}
+        <div className="col-span-12 lg:col-span-8 glass-card p-6 sm:p-8 bg-white border border-slate-200">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4 mb-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-brand-purple/5 text-brand-purple rounded-xl">
+                <BarChart2 className="w-5 h-5 text-brand-purple" />
+              </div>
+              <div>
+                <h3 className="font-serif font-black text-brand-purple text-sm sm:text-base">Kinerja Finansial</h3>
+                <p className="text-[10px] text-slate-500 font-medium">Laporan omset & efisiensi keranjang belanja ritual pagi</p>
+              </div>
+            </div>
+
+            {/* Date-Range Filter Tabs */}
+            <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl self-start sm:self-auto">
+              {(['today', '7days', 'month', 'all'] as const).map((range) => (
+                <button
+                  key={range}
+                  onClick={() => setFilterRange(range)}
+                  className={cn(
+                    "px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer",
+                    filterRange === range 
+                      ? "bg-white text-brand-purple shadow-sm" 
+                      : "text-slate-500 hover:text-slate-800"
+                  )}
+                >
+                  {range === 'today' ? 'Hari Ini' :
+                   range === '7days' ? 'H-7' :
+                   range === 'month' ? 'Bulan Ini' : 'Semua'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+            {/* Omset Selesai */}
+            <div className="p-5 bg-emerald-50/50 border border-emerald-100 rounded-2xl flex flex-col justify-between">
+              <div>
+                <span className="text-[9px] font-black uppercase tracking-widest text-emerald-800 flex items-center gap-1.5">
+                  <TrendingUp className="w-3.5 h-3.5 text-emerald-600" /> Omset Selesai (Nett)
+                </span>
+                <p className="text-xl sm:text-2xl font-serif font-black text-slate-900 tracking-tight mt-3">
+                  Rp {financeStats.totalCompletedRev.toLocaleString()}
+                </p>
+              </div>
+              <p className="text-[9px] text-emerald-600 font-bold mt-2">
+                ✓ {financeStats.completedCount} Pesanan Selesai
+              </p>
+            </div>
+
+            {/* Pendapatan Tertunda */}
+            <div className="p-5 bg-amber-50/50 border border-amber-100 rounded-2xl flex flex-col justify-between">
+              <div>
+                <span className="text-[9px] font-black uppercase tracking-widest text-amber-800 flex items-center gap-1.5">
+                  <DollarSign className="w-3.5 h-3.5 text-amber-600" /> Omset Antrean (Pipe)
+                </span>
+                <p className="text-xl sm:text-2xl font-serif font-black text-slate-900 tracking-tight mt-3">
+                  Rp {financeStats.totalPendingRev.toLocaleString()}
+                </p>
+              </div>
+              <p className="text-[9px] text-amber-600 font-bold mt-2">
+                ⏳ {financeStats.pendingCount} Pesanan Diproses
+              </p>
+            </div>
+
+            {/* Rata-rata Keranjang */}
+            <div className="p-5 bg-brand-purple/5 border border-brand-purple/10 rounded-2xl flex flex-col justify-between">
+              <div>
+                <span className="text-[9px] font-black uppercase tracking-widest text-brand-purple flex items-center gap-1.5">
+                  <ShoppingBag className="w-3.5 h-3.5 text-brand-purple" /> Nilai Keranjang (AOV)
+                </span>
+                <p className="text-xl sm:text-2xl font-serif font-black text-slate-900 tracking-tight mt-3">
+                  Rp {financeStats.averageOrderValue.toLocaleString()}
+                </p>
+              </div>
+              <p className="text-[9px] text-brand-purple font-bold mt-2">
+                ★ Rata-rata nominal per transaksi
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Top 5 Products Card */}
+        <div className="col-span-12 lg:col-span-4 glass-card p-6 sm:p-8 bg-white border border-slate-200 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center gap-3 border-b border-slate-100 pb-4 mb-4">
+              <div className="p-2 bg-brand-neon/20 text-brand-purple rounded-xl">
+                <Award className="w-5 h-5 text-brand-purple" />
+              </div>
+              <div>
+                <h3 className="font-serif font-black text-brand-purple text-sm sm:text-base">Menu Terlaris</h3>
+                <p className="text-[10px] text-slate-500 font-medium">Menu ritual sehat favorit pelanggan Anda</p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              {bestsellerProducts.length === 0 ? (
+                <div className="text-center py-8 text-slate-400 text-xs">Belum ada komparasi penjualan.</div>
+              ) : (
+                bestsellerProducts.map((p, idx) => (
+                  <div key={p.name} className="flex items-center justify-between py-2 border-b border-slate-50 last:border-0">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className={cn(
+                        "w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black border",
+                        idx === 0 ? "bg-brand-purple text-brand-neon border-brand-purple" : "bg-slate-100 text-slate-500 border-slate-200"
+                      )}>
+                        {idx + 1}
+                      </span>
+                      <span className="text-xs font-bold text-slate-700 truncate">{p.name}</span>
+                    </div>
+                    <span className="text-[10px] font-black text-brand-purple bg-brand-purple/5 px-2 py-0.5 rounded border border-brand-purple/10">
+                      {p.qty} Cup
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className="bg-slate-50 p-3 rounded-xl border border-slate-150 flex items-center gap-2.5 mt-4">
+            <Info className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+            <p className="text-[9px] text-slate-500 font-medium leading-tight">Dihitung otomatis secara realtime berdasarkan seluruh pesanan aktif dengan status valid.</p>
           </div>
         </div>
       </div>

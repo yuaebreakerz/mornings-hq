@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { motion } from 'motion/react';
-import { X, Upload, Loader2, Save, Image as ImageIcon } from 'lucide-react';
+import { X, Upload, Loader2, Save, Image as ImageIcon, Sparkles } from 'lucide-react';
 import { productService } from '../services/googleService';
 import { compressImage } from '../lib/imageUtils';
 import { getGoogleDriveUrl } from '../lib/utils';
@@ -17,6 +17,7 @@ const CATEGORIES: string[] = ['Overnight Oats', 'Meals', 'Beverages', 'Snacks'];
 
 export default function ProductForm({ onClose, onSave, initialData }: ProductFormProps) {
   const [loading, setLoading] = useState(false);
+  const [isGeneratingDesc, setIsGeneratingDesc] = useState(false);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(initialData?.image || null);
   const [galleryItems, setGalleryItems] = useState<{ url: string, file?: File }[]>(
@@ -37,6 +38,105 @@ export default function ProductForm({ onClose, onSave, initialData }: ProductFor
     is_available: initialData?.isAvailable ?? true,
     variants: initialData?.variants || '',
   });
+
+  const generateAIDescription = () => {
+    const productName = formData.name.trim();
+    if (!productName) {
+      alert('Silakan masukkan nama produk terlebih dahulu di kolom Nama Produk.');
+      return;
+    }
+
+    setIsGeneratingDesc(true);
+    setTimeout(() => {
+      const category = formData.category;
+      const lowerName = productName.toLowerCase();
+      
+      // Extract specific highlights based on ingredient keywords
+      const highlights: string[] = [];
+      if (lowerName.includes('mango') || lowerName.includes('mangga')) {
+        highlights.push('mangga tropis manis alami');
+      }
+      if (lowerName.includes('dragon') || lowerName.includes('naga')) {
+        highlights.push('buah naga merah kaya antioksidan');
+      }
+      if (lowerName.includes('berry') || lowerName.includes('straw') || lowerName.includes('blue')) {
+        highlights.push('kesegaran buah berry premium');
+      }
+      if (lowerName.includes('collagen') || lowerName.includes('kolagen')) {
+        highlights.push('booster kolagen aktif untuk kulit glowing');
+      }
+      if (lowerName.includes('chia')) {
+        highlights.push('organic chia seed kaya serat');
+      }
+      if (lowerName.includes('avocado') || lowerName.includes('alpukat')) {
+        highlights.push('alpukat mentega yang lembut gurih');
+      }
+      if (lowerName.includes('chocolate') || lowerName.includes('coklat') || lowerName.includes('cokelat')) {
+        highlights.push('cokelat premium bebas rasa bersalah');
+      }
+      if (lowerName.includes('matcha') || lowerName.includes('green tea') || lowerName.includes('greentea')) {
+        highlights.push('aroma matcha Jepang menenangkan');
+      }
+      if (lowerName.includes('coffee') || lowerName.includes('kopi')) {
+        highlights.push('booster kafein kopi espresso berkualitas');
+      }
+      if (lowerName.includes('almond')) {
+        highlights.push('susu almond creamy tinggi nutrisi');
+      }
+      if (lowerName.includes('banana') || lowerName.includes('pisang')) {
+        highlights.push('pisang manis alami sumber energi');
+      }
+      if (lowerName.includes('yogurt') || lowerName.includes('yoghurt')) {
+        highlights.push('kesegaran yoghurt aktif tinggi serat');
+      }
+      if (lowerName.includes('lemon') || lowerName.includes('orange') || lowerName.includes('jeruk')) {
+        highlights.push('ekstra vitamin C sitrus segar');
+      }
+      if (lowerName.includes('honey') || lowerName.includes('madu')) {
+        highlights.push('pemanis alami madu murni');
+      }
+      if (lowerName.includes('cheese') || lowerName.includes('keju')) {
+        highlights.push('gurihnya parutan keju asli');
+      }
+
+      // Base category phrasing (clean, concise, max 2 sentences)
+      let aiDesc = '';
+      const ingredientsText = highlights.length > 0 
+        ? ` dengan sentuhan ${highlights.join(' dan ')}`
+        : '';
+
+      if (category === 'Overnight Oats') {
+        aiDesc = `Menu overnight oats premium ${productName}${ingredientsText}. Menu sarapan praktis yang direndam semalaman, bebas gula pasir tambahan, kaya serat pangan utuh, dan pas untuk energi harian yang stabil!`;
+      } else if (category === 'Beverages') {
+        aiDesc = `Minuman segar murni ${productName}${ingredientsText}. Di-blend dingin dengan bahan alami pilihan tanpa pengawet buatan, memberikan hidrasi instan serta dorongan imun sehat alami seketika!`;
+      } else if (category === 'Meals') {
+        aiDesc = `Sajian sehat Gluten-Free lezat dari menu ${productName}${ingredientsText}. Dirancang higienis dengan komposisi gizi seimbang dan bebas MSG buatan agar aman di lambung serta memuaskan rasa lapar bertenaga harian Anda.`;
+      } else if (category === 'Snacks') {
+        aiDesc = `Camilan renyah padat serat ${productName}${ingredientsText}. Dipanggang alami rendah kalori bebas pengawet, sangat ideal sebagai teman penunda lapar cerdas di sela-sela rutinitas diet sehat Anda.`;
+      } else {
+        aiDesc = `Sajian lezat berkualitas tinggi ${productName}${ingredientsText}. Diracik higienis menggunakan bahan-bahan pilihan bernutrisi tinggi untuk menunjang gaya hidup aktif bersih harian Anda secara praktis.`;
+      }
+
+      setFormData(prev => ({ ...prev, description: aiDesc }));
+      setIsGeneratingDesc(false);
+
+      // Play soft success chime
+      try {
+        const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.frequency.setValueAtTime(523.25, audioCtx.currentTime); // C5
+        osc.frequency.setValueAtTime(659.25, audioCtx.currentTime + 0.1); // E5
+        osc.frequency.setValueAtTime(783.99, audioCtx.currentTime + 0.2); // G5
+        gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.35);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.35);
+      } catch (e) {}
+    }, 850);
+  };
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -87,7 +187,7 @@ export default function ProductForm({ onClose, onSave, initialData }: ProductFor
         status_produk: formData.status_produk,
         category: formData.category,
         variants: formData.variants,
-        image_url: initialData?.image_url || '',
+        image_url: initialData?.image || initialData?.image_url || '',
         active: formData.is_available ? 'TRUE' : 'FALSE'
       };
 
@@ -311,7 +411,27 @@ export default function ProductForm({ onClose, onSave, initialData }: ProductFor
                     </div>
                   </div>
                   <div>
-                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block ml-1">Deskripsi</label>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block ml-1">Deskripsi</label>
+                      <button
+                        type="button"
+                        onClick={generateAIDescription}
+                        disabled={isGeneratingDesc}
+                        className="flex items-center gap-1.5 px-3 py-1 bg-brand-purple hover:bg-brand-purple/90 text-white rounded-lg text-[9px] font-black uppercase tracking-wider transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-sm active:scale-95"
+                      >
+                        {isGeneratingDesc ? (
+                          <>
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            <span>Menulis deskripsi...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="w-3 h-3 text-brand-neon" />
+                            <span>Generate AI Deskripsi</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
                     <textarea
                       required
                       placeholder="Ceritakan tentang keunikan produk ini..."

@@ -24,6 +24,29 @@ function getOrCreateFolder(parentFolder, folderName) {
   return folders.hasNext() ? folders.next() : parentFolder.createFolder(folderName);
 }
 
+function deleteFileByUrl(url) {
+  if (!url || typeof url !== 'string') return;
+  
+  let fileId = '';
+  if (url.indexOf('lh3.googleusercontent.com/d/') !== -1) {
+    fileId = url.split('lh3.googleusercontent.com/d/')[1].split(/[/?#]/)[0];
+  } else if (url.indexOf('/file/d/') !== -1) {
+    fileId = url.split('/file/d/')[1].split(/[/?#]/)[0];
+  } else if (url.indexOf('id=') !== -1) {
+    fileId = url.split('id=')[1].split(/[&#?]/)[0];
+  }
+  
+  if (fileId) {
+    try {
+      const file = DriveApp.getFileById(fileId);
+      file.setTrashed(true);
+      Logger.log("Succesfully trashed old file from Drive: " + fileId);
+    } catch (e) {
+      Logger.log("Failed to delete old file ID " + fileId + ": " + e.toString());
+    }
+  }
+}
+
 function processImageFile(data, sheetName) {
   if (!data) return data;
   
@@ -45,6 +68,12 @@ function processImageFile(data, sheetName) {
   // Handle main image_file
   if (data.image_file && data.image_file.base64) {
     try {
+      // Clean up old file when a new one is uploaded
+      const oldUrl = data.image_url || data.image;
+      if (oldUrl) {
+        deleteFileByUrl(oldUrl);
+      }
+
       const decoded = Utilities.base64Decode(data.image_file.base64);
       const blob = Utilities.newBlob(decoded, data.image_file.mimeType, data.image_file.filename);
       const file = targetFolder.createFile(blob);
@@ -206,8 +235,27 @@ function doPost(e) {
     if (action === 'delete-row' || action === 'delete') {
       const id = payload.id;
       const values = sheet.getDataRange().getValues();
+      const headers = values[0];
       for (let i = 1; i < values.length; i++) {
         if (values[i][0] == id) {
+          // Attempt to delete associated files from Drive
+          try {
+            headers.forEach((h, j) => {
+              if (h === 'image_url' || h === 'image' || h === 'gallery_images') {
+                const urlVal = values[i][j];
+                if (urlVal) {
+                  if (h === 'gallery_images' && typeof urlVal === 'string') {
+                    urlVal.split(',').forEach(u => deleteFileByUrl(u.trim()));
+                  } else {
+                    deleteFileByUrl(urlVal);
+                  }
+                }
+              }
+            });
+          } catch (fileErr) {
+            Logger.log("Failed to clean up files on delete: " + fileErr.toString());
+          }
+          
           sheet.deleteRow(i + 1);
           return createResponse({ success: true });
         }

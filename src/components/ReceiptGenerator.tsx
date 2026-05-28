@@ -165,7 +165,7 @@ export default function ReceiptGenerator({ order, variant = 'button' }: ReceiptP
               "Semoga harimu secerah Mornings by SFC. Sampai jumpa di ritual pagi berikutnya!"
             </p>
             <div className="flex justify-center gap-6 pt-2">
-               <div className="text-[8px] font-black text-slate-300">WWW.MORNINGS.ID</div>
+               <div className="text-[8px] font-black text-slate-300">MORNINGSBYSFC.MY.ID</div>
                <div className="text-[8px] font-black text-slate-300">@MORNINGSBYSFC</div>
             </div>
           </div>

@@ -12,13 +12,15 @@ import {
   Loader2,
   MapPin,
   Calendar as CalendarIcon,
-  Plus
+  Plus,
+  Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { format } from 'date-fns';
 import { cn, parseItems, formatTime } from '../lib/utils';
 import { productService } from '../services/googleService';
 import ReceiptGenerator from '../components/ReceiptGenerator';
+import LabelGenerator from '../components/LabelGenerator';
 import ManualOrderModal from '../components/ManualOrderModal';
 
 interface Order {
@@ -45,6 +47,8 @@ export default function Orders() {
   const [newOrderAlert, setNewOrderAlert] = useState<{ id: string, name: string } | null>(null);
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [orderToEdit, setOrderToEdit] = useState<Order | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | number | null>(null);
+  const [isDeletingId, setIsDeletingId] = useState<string | number | null>(null);
 
   useEffect(() => {
     fetchOrders();
@@ -102,6 +106,19 @@ export default function Orders() {
       setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status } : o));
     } catch (err) {
       alert('Gagal mengupdate status');
+    }
+  }
+
+  async function handleDeleteOrder(orderId: string | number) {
+    setIsDeletingId(orderId);
+    try {
+      await productService.delete(orderId, 'orders');
+      setOrders(prev => prev.filter(o => o.id !== orderId));
+      setDeleteConfirmId(null);
+    } catch (err) {
+      alert('Gagal menghapus pesanan');
+    } finally {
+      setIsDeletingId(null);
     }
   }
 
@@ -340,6 +357,50 @@ export default function Orders() {
                       Edit Pesanan
                     </button>
                     <ReceiptGenerator order={order} />
+                    <LabelGenerator order={order} />
+                    {order.status === 'completed' && (
+                      <div className="w-full">
+                        {deleteConfirmId === order.id ? (
+                          <div className="flex flex-col gap-2 p-3 bg-rose-50 border border-rose-100 rounded-2xl animate-in fade-in slide-in-from-top-1 duration-200 w-full">
+                            <p className="text-[10px] text-rose-800 font-bold uppercase tracking-wider text-center">
+                              anda yakin akan menghapus data ini?
+                            </p>
+                            <div className="flex gap-2 w-full">
+                              <button
+                                type="button"
+                                disabled={isDeletingId === order.id}
+                                onClick={() => handleDeleteOrder(order.id)}
+                                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-rose-600 hover:bg-rose-700 disabled:bg-rose-400 text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all shadow-sm"
+                              >
+                                {isDeletingId === order.id ? (
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <Trash2 className="w-3 h-3" />
+                                )}
+                                Ya, Hapus
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isDeletingId === order.id}
+                                onClick={() => setDeleteConfirmId(null)}
+                                className="flex-1 px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all shadow-sm"
+                              >
+                                Batal
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setDeleteConfirmId(order.id)}
+                            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-rose-50 border border-rose-200 hover:bg-rose-100 text-rose-700 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shadow-sm duration-200 hover:scale-[1.01] active:scale-[0.99]"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            Hapus Pesanan
+                          </button>
+                        )}
+                      </div>
+                    )}
                     <select 
                       className="text-xs font-black bg-white border border-slate-200 rounded-2xl px-4 py-3 outline-none focus:ring-4 focus:ring-brand-purple/5 shadow-sm transition-all uppercase tracking-tight w-full"
                       value={order.status}

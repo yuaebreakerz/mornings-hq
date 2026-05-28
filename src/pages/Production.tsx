@@ -9,7 +9,10 @@ import {
   Book,
   Plus,
   CheckCircle2,
-  Circle
+  Circle,
+  ShoppingCart,
+  Sparkles,
+  Info
 } from 'lucide-react';
 import { format, addDays } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
@@ -42,6 +45,15 @@ export default function Production() {
 
   // Local state for checklists
   const [checklists, setChecklists] = useState<Record<string, Record<string, boolean>>>({});
+  const [recipes, setRecipes] = useState<any[]>([]);
+  const [shoppingChecked, setShoppingChecked] = useState<Record<string, boolean>>({});
+
+  const toggleShoppingChecked = (name: string) => {
+    setShoppingChecked(prev => ({
+      ...prev,
+      [name]: !prev[name]
+    }));
+  };
 
   const getChecklistForProduct = (name: string) => {
     const lowerName = name.toLowerCase();
@@ -68,7 +80,13 @@ export default function Production() {
   async function fetchProductionNeeds() {
     setLoading(true);
     try {
-      const orders = await productService.getOrders();
+      const [orders, recipesList] = await Promise.all([
+        productService.getOrders(),
+        productService.getRecipes().catch(() => [])
+      ]);
+      if (recipesList && Array.isArray(recipesList)) {
+        setRecipes(recipesList);
+      }
       if (orders && Array.isArray(orders)) {
         const productionStatuses = ['confirmed', 'preparing', 'ready', 'dikonfirmasi', 'konfirmasi', 'diproses', 'siap kirim', 'siap'];
         const readyStatuses = ['ready', 'siap kirim', 'siap', 'selesai', 'completed'];
@@ -132,6 +150,107 @@ export default function Production() {
       console.error(err);
     }
     setLoading(false);
+  }
+
+  // Dynamic material / ingredient estimation
+  const materialEstimation = React.useMemo(() => {
+    const totalIngredients: Record<string, { qty: number; unit: string; matchedProducts: string[] }> = {};
+    
+    needs.forEach(item => {
+      // Find matching recipe or check if recipe title matches
+      const matchedRecipe = recipes.find(r => {
+        const title = (r.title || '').toLowerCase();
+        const prodName = item.name.toLowerCase();
+        return title.includes(prodName) || prodName.includes(title);
+      });
+      
+      if (matchedRecipe && matchedRecipe.ingredients) {
+        const parsed = parseRecipesIngredients(matchedRecipe.ingredients, item.qty);
+        parsed.forEach(ing => {
+          const key = `${ing.name.toLowerCase()}_${ing.unit.toLowerCase()}`;
+          if (totalIngredients[key]) {
+            totalIngredients[key].qty += ing.qty;
+            if (!totalIngredients[key].matchedProducts.includes(item.name)) {
+              totalIngredients[key].matchedProducts.push(item.name);
+            }
+          } else {
+            totalIngredients[key] = {
+              qty: ing.qty,
+              unit: ing.unit,
+              matchedProducts: [item.name]
+            };
+          }
+        });
+      }
+    });
+
+    return Object.entries(totalIngredients).map(([key, data]) => {
+      const lastUnderscore = key.lastIndexOf('_');
+      const name = lastUnderscore > -1 ? key.substring(0, lastUnderscore) : key;
+      // Capitalize first letters for visual neatness
+      const capitalizedName = name.replace(/\b\w/g, c => c.toUpperCase());
+      return {
+        name: capitalizedName,
+        qty: parseFloat(data.qty.toFixed(2)),
+        unit: data.unit,
+        products: data.matchedProducts
+      };
+    });
+  }, [needs, recipes]);
+
+  function parseRecipesIngredients(ingredientsStr: string, multiplier: number) {
+    if (!ingredientsStr) return [];
+    const lines = ingredientsStr.split('\n').map(l => l.trim()).filter(Boolean);
+    return lines.map(line => {
+      let qty = 1;
+      let unit = '';
+      let name = line;
+
+      // Pattern 1: Leading numbers (integer, decimal, fraction) and optional unit
+      const startNumRegex = /^([\d\/\.,]+)\s*(g|gr|kg|ml|l|sdm|sdt|pcs|butir|biji|bungkus|buah|kotak)?\s+(.+)$/i;
+      // Pattern 2: Casing like "Gandum: 100g"
+      const endNumRegex = /^(.+?)\s*[:\-]\s*([\d\/\.,]+)\s*(g|gr|kg|ml|l|sdm|sdt|pcs|butir|biji|bungkus|buah|kotak)?$/i;
+
+      let match = line.match(startNumRegex);
+      if (match) {
+        const numStr = match[1].replace(',', '.');
+        let parsedNum = parseFloat(numStr);
+        if (numStr.includes('/')) {
+          const parts = numStr.split('/');
+          if (parts.length === 2) {
+            parsedNum = parseFloat(parts[0]) / parseFloat(parts[1]);
+          }
+        }
+        if (!isNaN(parsedNum)) {
+          qty = parsedNum;
+          unit = match[2] || '';
+          name = match[3];
+        }
+      } else {
+        match = line.match(endNumRegex);
+        if (match) {
+          const numStr = match[2].replace(',', '.');
+          let parsedNum = parseFloat(numStr);
+          if (numStr.includes('/')) {
+            const parts = numStr.split('/');
+            if (parts.length === 2) {
+              parsedNum = parseFloat(parts[0]) / parseFloat(parts[1]);
+            }
+          }
+          if (!isNaN(parsedNum)) {
+            qty = parsedNum;
+            unit = match[3] || '';
+            name = match[1];
+          }
+        }
+      }
+
+      return {
+        name: name.trim(),
+        qty: qty * multiplier,
+        unit: unit.trim()
+      };
+    });
   }
 
   return (
@@ -425,6 +544,102 @@ export default function Production() {
                 <div className="p-10 sm:p-20 text-center">
                   <PackageCheck className="w-12 h-12 sm:w-16 sm:h-16 text-slate-400 mx-auto mb-4" />
                   <p className="text-slate-600 font-bold font-serif text-base sm:text-lg">Hening... Tidak ada antrean produksi untuk tanggal ini.</p>
+                </div>
+              )}
+            </div>
+          </motion.div>
+
+          {/* Dynamic Material Estimator List */}
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="glass-card shadow-xl overflow-hidden mt-6 bg-white border border-slate-200"
+          >
+            <div className="p-4 sm:p-6 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-brand-purple/5 text-brand-purple rounded-xl">
+                  <ShoppingCart className="w-5 h-5 text-brand-purple" />
+                </div>
+                <div>
+                  <h3 className="font-serif font-black text-brand-purple text-sm sm:text-base">Kebutuhan Bahan Baku</h3>
+                  <p className="text-[10px] text-slate-500 font-medium">Akumulasi bahan baku otomatis dari pesanan aktif hari ini</p>
+                </div>
+              </div>
+              <span className="text-[9px] font-black text-white bg-brand-purple px-2.5 py-1 rounded-lg uppercase tracking-widest flex items-center gap-1">
+                <Sparkles className="w-3 h-3 text-brand-neon animate-pulse" /> Auto Math
+              </span>
+            </div>
+
+            <div className="p-6">
+              {materialEstimation.length === 0 ? (
+                <div className="py-6 text-center text-slate-400 flex flex-col items-center justify-center">
+                  <Info className="w-8 h-8 text-slate-300 mb-2" />
+                  <p className="text-xs font-black uppercase tracking-widest">Formula resep tidak terdeteksi</p>
+                  <p className="text-[10px] text-slate-500 mt-1 max-w-[280px]">Tambahkan resep untuk menu menu Anda agar bahan baku dapat dihitung otomatis.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-12 text-[9px] font-black uppercase tracking-widest text-slate-400 border-b border-slate-100 pb-2">
+                    <span className="col-span-6">Nama Bahan</span>
+                    <span className="col-span-3 text-center">Estimasi Kebutuhan</span>
+                    <span className="col-span-3 text-right">Status Belanja</span>
+                  </div>
+
+                  <div className="divide-y divide-slate-100 max-h-[380px] overflow-y-auto pr-1">
+                    {materialEstimation.map((item, index) => {
+                      const isChecked = !!shoppingChecked[item.name];
+                      return (
+                        <div 
+                          key={index}
+                          onClick={() => toggleShoppingChecked(item.name)}
+                          className={cn(
+                            "grid grid-cols-12 items-center py-3.5 cursor-pointer hover:bg-slate-50/50 px-2 -mx-2 rounded-xl transition-all",
+                            isChecked && "bg-emerald-50/30"
+                          )}
+                        >
+                          <div className="col-span-6 pr-2">
+                            <span className={cn(
+                              "text-xs font-black text-slate-800 block",
+                              isChecked && "line-through text-slate-400"
+                            )}>
+                              {item.name}
+                            </span>
+                            <span className="text-[8px] font-extrabold uppercase tracking-tight text-slate-500 block opacity-75">
+                              Sebab: {item.products.join(', ')}
+                            </span>
+                          </div>
+
+                          <div className="col-span-3 text-center">
+                            <span className={cn(
+                              "text-sm font-black text-brand-purple tracking-tight",
+                              isChecked && "text-slate-400"
+                            )}>
+                              {item.qty} {item.unit || 'unit'}
+                            </span>
+                          </div>
+
+                          <div className="col-span-3 flex justify-end">
+                            {isChecked ? (
+                              <span className="flex items-center gap-1 bg-emerald-50 text-emerald-600 border border-emerald-200 px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-500" /> Siap
+                              </span>
+                            ) : (
+                              <span className="flex items-center gap-1 bg-slate-50 text-slate-500 border border-slate-200 px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest hover:border-brand-purple/30">
+                                <Circle className="w-3 h-3 text-slate-300" /> Kurang
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="bg-brand-purple/5 p-4 rounded-2xl border border-brand-purple/10 flex items-start gap-3 mt-4">
+                    <Info className="w-4 h-4 text-brand-purple shrink-0 mt-0.5" />
+                    <p className="text-[10px] text-brand-purple font-medium leading-relaxed">
+                      Sistem membaca isi komoditas bumbu rahasia dari resep Anda (di halaman resep), lalu mengalikannya dengan total antrean unit produksi Anda hari ini. Belanja mingguan kini terkontrol!
+                    </p>
+                  </div>
                 </div>
               )}
             </div>

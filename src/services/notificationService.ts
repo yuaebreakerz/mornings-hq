@@ -163,10 +163,13 @@ class NotificationService {
       } else if (this.hasPermission && 'Notification' in window) {
         // Standard PWA web browser banner notification
         const reg = await navigator.serviceWorker.ready.catch(() => null);
+        // Define notification assets.
+        // If user uploads 'notification_icon.png' / 'notification_badge.png', use them.
+        // Otherwise, fall back to '/logo.png' (for sidebar/login icon) or '/logo_app.jpg' (for app logo).
         const options = {
           body,
-          icon: '/logo.png',
-          badge: '/logo.png',
+          icon: '/notification_icon.png',
+          badge: '/notification_badge.png',
           vibrate: type === 'new_order' ? [200, 100, 200, 100, 200] : [100, 50, 100],
           tag: type,
           renotify: true

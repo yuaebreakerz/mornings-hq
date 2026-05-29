@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Filter for high contrast solid black drop shadow -->
+    <filter id="solid-shadow" x="-20%" y="-20%" width="150%" height="150%">
+      <feOffset dx="5" dy="5" in="SourceAlpha" result="offset" />
+      <feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.95 0" in="offset" result="matrix" />
+      <feBlend in="SourceGraphic" in2="matrix" mode="normal" />
+    </filter>
+  </defs>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Kaushan+Script&amp;family=Montserrat:ital,wght@1,900&amp;display=swap');
+    
+    .bg-rect {
+      fill: #6D28D9;
+    }
+    
+    .monogram-text {
+      font-family: 'Montserrat', sans-serif;
+      font-size: 26px;
+      font-style: italic;
+      font-weight: 900;
+      fill: #ffffff;
+      letter-spacing: 3px;
+      text-anchor: middle;
+      opacity: 0.95;
+    }
+
+    .brand-text {
+      font-family: 'Kaushan Script', 'Pacifico', cursive;
+      font-size: 82px;
+      fill: #ffffff;
+      text-anchor: middle;
+    }
+  </style>
+
+  <!-- Solid corporate purple icon background with polished rounded corners -->
+  <rect class="bg-rect" width="512" height="512" rx="112" />
+
+  <!-- Stylized SFC Monogram -->
+  <g transform="translate(0, -5)" filter="url(#solid-shadow)">
+    <!-- Small premium accent line -->
+    <path d="M 226,134 L 286,134" stroke="#ffffff" stroke-width="2" stroke-linecap="round" opacity="0.5" />
+    <text x="257" y="166" class="monogram-text">SFC</text>
+    <path d="M 238,176 L 274,176" stroke="#ffffff" stroke-width="2" stroke-linecap="round" opacity="0.5" />
+  </g>
+
+  <!-- Main word "Mornings" with solid calligraphic styling & shadow -->
+  <g filter="url(#solid-shadow)">
+    <text x="256" y="284" class="brand-text">Mornings</text>
+  </g>
+
+  <!-- Brush swoop underline underline arch (crescent shape) -->
+  <g filter="url(#solid-shadow)">
+    <path d="M 85,305 Q 256,360 427,305 Q 256,330 85,305 Z" fill="#ffffff" />
+  </g>
+</svg>

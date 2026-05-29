@@ -18,6 +18,7 @@ import {
   Instagram, 
   MessageSquare, 
   Video, 
+  Loader2, 
   Share2, 
   TrendingUp, 
   Edit2, 
@@ -108,79 +109,177 @@ export default function SocialPlanner() {
   // Attachment helper files state
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
 
-  // Load items from local storage
-  useEffect(() => {
-    const cached = localStorage.getItem('mornings_social_planner');
-    if (cached) {
+  const [syncStatus, setSyncStatus] = useState<'synced' | 'local'>('local');
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  // Sync content to Google Sheets
+  const syncToSheets = async (currentList: SocialContent[]) => {
+    setIsSyncing(true);
+    const urlEnv = (import.meta as any).env.VITE_GAS_API_URL;
+    if (urlEnv && !urlEnv.includes('YOUR_SCRIPT_ID')) {
       try {
-        setContents(JSON.parse(cached));
+        await fetch(urlEnv.trim() + '?path=social_planner', {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action: 'sync_sheet',
+            sheet: 'social_planner',
+            data: currentList
+          })
+        }).catch(() => null);
+        setSyncStatus('synced');
       } catch (e) {
-        console.warn('Failed to load social contents', e);
+        console.warn('Sync failed:', e);
+        setSyncStatus('local');
       }
-    } else {
-      // Mock initial data
-      const mockInitial: SocialContent[] = [
-        {
-          id: 's1',
-          title: 'Behind the Scenes: Proses Blender Collagen Glow',
-          platform: 'Instagram',
-          type: 'Reels',
-          uploadDate: format(new Date(), 'yyyy-MM-dd'),
-          status: 'Editing',
-          ideaDescription: 'Tampilkan aesthetic pours, warna merah buah naga segar, serbuk kolagen premium, dan tekstur kental smoothie.',
-          caption: 'Dibalik kelembutan Dragon Fruit Collagen Glow! 🐉✨ Diproses higienis setiap pagi untuk mencerahkan hari dan kulitmu. Mau nyoba langsung di outlet?',
-          cta: 'Klik Link di Bio untuk pesan instan POS / WhatsApp!',
-          shootChecklist: [
-            { id: '1', text: 'Ambil video cinematic cup kosong', done: true },
-            { id: '2', text: 'Rekam pouring naga segar & susu almond', done: true },
-            { id: '3', text: 'Ambil shot blender berputar kencang', done: true },
-            { id: '4', text: 'Sajikan dengan kelapa parut di atasnya', done: false }
-          ],
-          assets: [
-            { id: 'a1', name: 'bts_draft_video.mp4', type: 'video/mp4', url: 'blob:mock' }
-          ],
-          created_at: new Date().toISOString()
-        },
-        {
-          id: 's2',
-          title: 'Tips Memilih Menu Sehat Saat Cuaca Panas',
-          platform: 'TikTok',
-          type: 'Reels',
-          uploadDate: format(new Date(Date.now() + 86400000 * 2), 'yyyy-MM-dd'),
-          status: 'Idea',
-          ideaDescription: 'Berikan 3 alasan kenapa buah-buahan dingin berenergi tinggi lebih efektif dibanding es sirup gula.',
-          caption: 'Cuaca terik ekstrim bikin gampang lemes? 🥵 Jangan salah pilih asupan! Ini dia 3 rahasia tetep bugar & fresh seharian.',
-          cta: 'Share video ini ke bestie mager kalian!',
-          shootChecklist: [
-            { id: '10', text: 'Wajah lelah ekspresi kepanasan', done: false },
-            { id: '11', text: 'Tampilkan transisi minum Mornings Mango Glow', done: false }
-          ],
-          assets: [],
-          created_at: new Date().toISOString()
-        },
-        {
-          id: 's3',
-          title: 'Threads Tanya Jawab: "Sarapan favorit kalian apa?"',
-          platform: 'Threads',
-          type: 'Feed',
-          uploadDate: format(new Date(Date.now() - 86400000), 'yyyy-MM-dd'),
-          status: 'Posted',
-          ideaDescription: 'Tingkatkan keterlibatan audiens dengan polling sederhana dan thread interaktif tentang gaya hidup gluten-free.',
-          caption: 'Makan bubur diaduk, ga diaduk, atau... sarapan Smoothie Cup pagi hari tanpa ribet sambil nyetir? Coba sebutin rutinitas kalian di bawah 👇',
-          cta: 'Ikuti percakapan dan klaim diskon eksklusif di Threads!',
-          shootChecklist: [],
-          assets: [],
-          created_at: new Date().toISOString()
-        }
-      ];
-      setContents(mockInitial);
-      localStorage.setItem('mornings_social_planner', JSON.stringify(mockInitial));
     }
+    setIsSyncing(false);
+  };
+
+  const getDefaultMockInitial = (): SocialContent[] => [
+    {
+      id: 's1',
+      title: 'Behind the Scenes: Proses Blender Collagen Glow',
+      platform: 'Instagram',
+      type: 'Reels',
+      uploadDate: format(new Date(), 'yyyy-MM-dd'),
+      status: 'Editing',
+      ideaDescription: 'Tampilkan aesthetic pours, warna merah buah naga segar, serbuk kolagen premium, dan tekstur kental smoothie.',
+      caption: 'Dibalik kelembutan Dragon Fruit Collagen Glow! 🐉✨ Diproses higienis setiap pagi untuk mencerahkan hari dan kulitmu. Mau nyoba langsung di outlet?',
+      cta: 'Klik Link di Bio untuk pesan instan POS / WhatsApp!',
+      shootChecklist: [
+        { id: '1', text: 'Ambil video cinematic cup kosong', done: true },
+        { id: '2', text: 'Rekam pouring naga segar & susu almond', done: true },
+        { id: '3', text: 'Ambil shot blender berputar kencang', done: true },
+        { id: '4', text: 'Sajikan dengan kelapa parut di atasnya', done: false }
+      ],
+      assets: [
+        { id: 'a1', name: 'bts_draft_video.mp4', type: 'video/mp4', url: 'blob:mock' }
+      ],
+      created_at: new Date().toISOString()
+    },
+    {
+      id: 's2',
+      title: 'Tips Memilih Menu Sehat Saat Cuaca Panas',
+      platform: 'TikTok',
+      type: 'Reels',
+      uploadDate: format(new Date(Date.now() + 86400000 * 2), 'yyyy-MM-dd'),
+      status: 'Idea',
+      ideaDescription: 'Berikan 3 alasan kenapa buah-buahan dingin berenergi tinggi lebih efektif dibanding es sirup gula.',
+      caption: 'Cuaca terik ekstrim bikin gampang lemes? 🥵 Jangan salah pilih asupan! Ini dia 3 rahasia tetep bugar & fresh seharian.',
+      cta: 'Share video ini ke bestie mager kalian!',
+      shootChecklist: [
+        { id: '10', text: 'Wajah lelah ekspresi kepanasan', done: false },
+        { id: '11', text: 'Tampilkan transisi minum Mornings Mango Glow', done: false }
+      ],
+      assets: [],
+      created_at: new Date().toISOString()
+    },
+    {
+      id: 's3',
+      title: 'Threads Tanya Jawab: "Sarapan favorit kalian apa?"',
+      platform: 'Threads',
+      type: 'Feed',
+      uploadDate: format(new Date(Date.now() - 86400000), 'yyyy-MM-dd'),
+      status: 'Posted',
+      ideaDescription: 'Tingkatkan keterlibatan audiens dengan polling sederhana dan thread interaktif tentang gaya hidup gluten-free.',
+      caption: 'Makan bubur diaduk, ga diaduk, atau... sarapan Smoothie Cup pagi hari tanpa ribet sambil nyetir? Coba sebutin rutinitas kalian di bawah 👇',
+      cta: 'Ikuti percakapan dan klaim diskon eksklusif di Threads!',
+      shootChecklist: [],
+      assets: [],
+      created_at: new Date().toISOString()
+    }
+  ];
+
+  // Load items from local storage & sync with Sheets
+  useEffect(() => {
+    const loadSocialData = async () => {
+      setLoading(true);
+      
+      // 1. Load from cache first for immediate UI response
+      const cached = localStorage.getItem('mornings_social_planner');
+      let localList: SocialContent[] = [];
+      if (cached) {
+        try {
+          localList = JSON.parse(cached);
+          setContents(localList);
+        } catch (e) {
+          console.warn('Failed to load social contents cached', e);
+        }
+      }
+
+      // 2. Load and sync from Google Sheets database
+      const urlEnv = (import.meta as any).env.VITE_GAS_API_URL;
+      if (urlEnv && !urlEnv.includes('YOUR_SCRIPT_ID')) {
+        try {
+          const result = await fetch(`${urlEnv.trim()}?path=social_planner&action=read&cb=${Date.now()}`)
+            .then(res => res.json())
+            .catch(() => null);
+
+          if (result && Array.isArray(result) && result.length > 0) {
+            const parsedResult = result.map((item: any) => {
+              let shootChecklist = [];
+              let assets = [];
+              try {
+                if (item.shootChecklist) {
+                  shootChecklist = typeof item.shootChecklist === 'string' ? JSON.parse(item.shootChecklist) : item.shootChecklist;
+                }
+              } catch (e) {
+                console.warn('Error parsing shootChecklist', e);
+              }
+              try {
+                if (item.assets) {
+                  assets = typeof item.assets === 'string' ? JSON.parse(item.assets) : item.assets;
+                }
+              } catch (e) {
+                console.warn('Error parsing assets', e);
+              }
+              return {
+                ...item,
+                shootChecklist: Array.isArray(shootChecklist) ? shootChecklist : [],
+                assets: Array.isArray(assets) ? assets : []
+              };
+            });
+
+            setContents(parsedResult as SocialContent[]);
+            localStorage.setItem('mornings_social_planner', JSON.stringify(parsedResult));
+            setSyncStatus('synced');
+          } else {
+            // Sheet is new or empty. Check if localList is empty, seed mock if so.
+            if (localList.length === 0) {
+              const mockInitial = getDefaultMockInitial();
+              setContents(mockInitial);
+              localStorage.setItem('mornings_social_planner', JSON.stringify(mockInitial));
+              syncToSheets(mockInitial);
+            } else {
+              // Sync local list to empty sheet so data is preserved in drive
+              syncToSheets(localList);
+            }
+            setSyncStatus('local');
+          }
+        } catch (err) {
+          console.warn('Social sheets sync error:', err);
+          setSyncStatus('local');
+        }
+      } else {
+        // No Google Sheets script API URL configured, load fallback mock if cache is empty
+        if (localList.length === 0) {
+          const mockInitial = getDefaultMockInitial();
+          setContents(mockInitial);
+          localStorage.setItem('mornings_social_planner', JSON.stringify(mockInitial));
+        }
+        setSyncStatus('local');
+      }
+      setLoading(false);
+    };
+
+    loadSocialData();
   }, []);
 
   const saveContentsToDb = (updated: SocialContent[]) => {
     setContents(updated);
     localStorage.setItem('mornings_social_planner', JSON.stringify(updated));
+    syncToSheets(updated);
   };
 
   // Drag and Drop simulated click movement
@@ -488,8 +587,17 @@ export default function SocialPlanner() {
               <Share2 className="w-5 h-5 text-brand-neon" />
             </span>
             <div>
-              <h2 className="text-xl sm:text-2xl font-serif font-black tracking-tight text-white flex items-center gap-2">
+              <h2 className="text-xl sm:text-2xl font-serif font-black tracking-tight text-white flex flex-wrap items-center gap-2">
                 Social Media Planner <span className="text-xs font-mono font-bold bg-brand-purple/20 text-brand-neon px-2.5 py-1 rounded border border-brand-purple/30">DARK MODE HQ</span>
+                {syncStatus === 'synced' ? (
+                  <span className="inline-flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Cloud Sync
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full border border-slate-700">
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-500" /> Offline Draft
+                  </span>
+                )}
               </h2>
               <p className="text-xs text-slate-400 mt-1">Mengorganisir perencanaan, checklist shoot, caption, dan booster AI untuk konten viral Mornings.</p>
             </div>

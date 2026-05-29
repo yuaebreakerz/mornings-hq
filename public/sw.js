@@ -4,6 +4,7 @@ const ASSETS = [
   '/',
   '/index.html',
   '/logo.png',
+  '/logo_app.jpg',
   '/manifest.json'
 ];
 
@@ -55,8 +56,8 @@ self.addEventListener('push', (event) => {
 
   const options = {
     body: data.body,
-    icon: '/logo.png',
-    badge: '/logo.png',
+    icon: '/notification_icon.png',
+    badge: '/notification_badge.png',
     vibrate: [100, 50, 100],
     data: {
       primaryKey: 1

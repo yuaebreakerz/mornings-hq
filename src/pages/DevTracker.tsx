@@ -194,6 +194,10 @@ export default function DevTracker() {
             ];
             setTasks(initialMock);
             localStorage.setItem('mornings_dev_tasks', JSON.stringify(initialMock));
+            syncToSheets(initialMock);
+          } else {
+            // Local list exists but sheet was empty/new, let's sync local tasks up to Sheets!
+            syncToSheets(localList);
           }
           setSyncStatus('local');
         }

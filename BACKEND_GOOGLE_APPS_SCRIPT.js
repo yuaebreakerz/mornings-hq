@@ -1,9 +1,9 @@
 /**
- * MORNINGS HQ - BACKEND API (v3.6)
+ * MORNINGS HQ - BACKEND API (v3.7)
  * Pemilik: morningsbysfc@gmail.com
- * Update: Auto-create sheet for Recipes & Orders
+ * Update: Auto-create sheet for Recipes, Orders, & Dev Tasks Sync
  */
-const SCRIPT_VERSION = "3.6";
+const SCRIPT_VERSION = "3.7";
 const SPREADSHEET_ID = '17-iz1JJwi_huo2a0AIYalenc4Y54IexKwIWk3sizw1E';
 const DRIVE_FOLDER_NAME = 'MorningsHQ_Uploads';
 
@@ -158,11 +158,13 @@ function doPost(e) {
     let sheet = ss.getSheetByName(sheetName);
     
     if (!sheet) {
-      if (action === 'add-row' || action === 'insert') {
+      if (action === 'add-row' || action === 'insert' || action === 'sync_sheet') {
         const defaultHeaders = {
           'site_config': ['id', 'admin_password', 'whatsapp_number', 'instagram_handle', 'tiktok_handle', 'address', 'email_contact', 'opening_hours', 'running_text', 'announcement', 'site_title', 'meta_description', 'meta_keywords', 'share_thumbnail', 'updated_at'],
           'recipes': ['id', 'title', 'category', 'description', 'ingredients', 'instructions', 'created_at', 'updated_at'],
-          'orders': ['id', 'customer_name', 'whatsapp_number', 'status', 'items', 'total_amount', 'delivery_address', 'created_at', 'updated_at']
+          'orders': ['id', 'customer_name', 'whatsapp_number', 'status', 'items', 'total_amount', 'delivery_address', 'created_at', 'updated_at'],
+          'dev_tasks': ['id', 'title', 'description', 'status', 'priority', 'deadline', 'category', 'isPinned', 'referenceLink', 'referenceImage', 'referenceFile', 'fileName', 'created_at'],
+          'social_planner': ['id', 'title', 'platform', 'type', 'uploadDate', 'status', 'ideaDescription', 'caption', 'cta', 'shootChecklist', 'assets', 'created_at']
         };
         const headers = defaultHeaders[sheetName] || ['id', 'name', 'created_at', 'updated_at'];
         sheet = ss.insertSheet(sheetName);
@@ -211,6 +213,33 @@ function doPost(e) {
         });
       }
       return createResponse({ success: true, data: data });
+    }
+
+    if (action === 'sync_sheet') {
+      const dataList = payload.data || [];
+      const defaultHeaders = {
+        'dev_tasks': ['id', 'title', 'description', 'status', 'priority', 'deadline', 'category', 'isPinned', 'referenceLink', 'referenceImage', 'referenceFile', 'fileName', 'created_at'],
+        'social_planner': ['id', 'title', 'platform', 'type', 'uploadDate', 'status', 'ideaDescription', 'caption', 'cta', 'shootChecklist', 'assets', 'created_at']
+      };
+      const headers = defaultHeaders[sheetName] || ['id', 'name', 'created_at', 'updated_at'];
+      
+      // Clear sheet and rewrite with headers and sync data
+      sheet.clearContents();
+      sheet.appendRow(headers);
+      
+      if (Array.isArray(dataList) && dataList.length > 0) {
+        dataList.forEach(item => {
+          const row = headers.map(h => {
+            let val = item[h];
+            if (h === 'isPinned') {
+              return val ? "TRUE" : "FALSE";
+            }
+            return (val === undefined) ? "" : (typeof val === 'object' ? JSON.stringify(val) : val);
+          });
+          sheet.appendRow(row);
+        });
+      }
+      return createResponse({ success: true, count: dataList.length });
     }
 
     if (action === 'update-row' || action === 'update') {

@@ -31,7 +31,9 @@ import {
   FileVideo,
   Lightbulb,
   Workflow,
-  Sparkle
+  Sparkle,
+  Paperclip,
+  Play
 } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths, isToday } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
@@ -50,7 +52,7 @@ export interface SocialContent {
   caption: string;
   cta: string;
   shootChecklist: { id: string; text: string; done: boolean }[];
-  assets: { id: string; name: string; type: string; url: string }[];
+  assets: string; // Tautan / Link Referensi Media
   created_at: string;
 }
 
@@ -101,13 +103,90 @@ export default function SocialPlanner() {
     caption: '',
     cta: '',
     shootChecklist: [] as SocialContent['shootChecklist'],
-    assets: [] as SocialContent['assets']
+    assets: ''
   });
 
   // Checklist helper item state
   const [newChecklistItem, setNewChecklistItem] = useState('');
+  const [contentToDelete, setContentToDelete] = useState<SocialContent | null>(null);
   // Attachment helper files state
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
+  const [uploadingAsset, setUploadingAsset] = useState(false);
+
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => {
+        const result = reader.result as string;
+        resolve(result);
+      };
+      reader.onerror = error => reject(error);
+    });
+  };
+
+  const handleUploadSocialAsset = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files) return;
+    const filesArray = Array.from(e.target.files) as File[];
+    if (filesArray.length === 0) return;
+
+    setUploadingAsset(true);
+    const urlEnv = (import.meta as any).env.VITE_GAS_API_URL;
+    const isGasConfigured = urlEnv && !urlEnv.includes('YOUR_SCRIPT_ID');
+
+    for (const file of filesArray) {
+      try {
+        const base64Data = await fileToBase64(file);
+        let finalUrl = base64Data; // Fallback to base64 if not configured
+
+        if (isGasConfigured) {
+          const parts = base64Data.split(';base64,');
+          const mimeType = parts[0].split(':')[1];
+          const rawBase64 = parts[1];
+
+          const resp = await fetch(urlEnv.trim(), {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({
+              action: 'upload_file',
+              folder: 'SocialPlanner',
+              file: {
+                base64: rawBase64,
+                mimeType: mimeType,
+                filename: file.name
+              }
+            })
+          }).then(r => r.json());
+
+          if (resp && resp.success && resp.url) {
+            finalUrl = resp.url;
+          }
+        }
+
+        const newAsset = {
+          id: 'ast_' + Date.now() + '_' + Math.random().toString(36).substring(2, 5),
+          name: file.name,
+          type: file.type,
+          url: finalUrl
+        };
+
+        setFormData(prev => ({
+          ...prev,
+          assets: [...prev.assets, newAsset]
+        }));
+      } catch (err) {
+        console.error('Asset upload error:', err);
+      }
+    }
+    setUploadingAsset(false);
+  };
+
+  const removeSocialAsset = (assetId: string) => {
+    setFormData(prev => ({
+      ...prev,
+      assets: prev.assets.filter(a => a.id !== assetId)
+    }));
+  };
 
   const [syncStatus, setSyncStatus] = useState<'synced' | 'local'>('local');
   const [isSyncing, setIsSyncing] = useState(false);
@@ -153,9 +232,7 @@ export default function SocialPlanner() {
         { id: '3', text: 'Ambil shot blender berputar kencang', done: true },
         { id: '4', text: 'Sajikan dengan kelapa parut di atasnya', done: false }
       ],
-      assets: [
-        { id: 'a1', name: 'bts_draft_video.mp4', type: 'video/mp4', url: 'blob:mock' }
-      ],
+      assets: 'https://instagram.com',
       created_at: new Date().toISOString()
     },
     {
@@ -172,7 +249,7 @@ export default function SocialPlanner() {
         { id: '10', text: 'Wajah lelah ekspresi kepanasan', done: false },
         { id: '11', text: 'Tampilkan transisi minum Mornings Mango Glow', done: false }
       ],
-      assets: [],
+      assets: '',
       created_at: new Date().toISOString()
     },
     {
@@ -186,7 +263,7 @@ export default function SocialPlanner() {
       caption: 'Makan bubur diaduk, ga diaduk, atau... sarapan Smoothie Cup pagi hari tanpa ribet sambil nyetir? Coba sebutin rutinitas kalian di bawah 👇',
       cta: 'Ikuti percakapan dan klaim diskon eksklusif di Threads!',
       shootChecklist: [],
-      assets: [],
+      assets: '',
       created_at: new Date().toISOString()
     }
   ];
@@ -219,7 +296,7 @@ export default function SocialPlanner() {
           if (result && Array.isArray(result) && result.length > 0) {
             const parsedResult = result.map((item: any) => {
               let shootChecklist = [];
-              let assets = [];
+              let assetsVal = '';
               try {
                 if (item.shootChecklist) {
                   shootChecklist = typeof item.shootChecklist === 'string' ? JSON.parse(item.shootChecklist) : item.shootChecklist;
@@ -229,7 +306,31 @@ export default function SocialPlanner() {
               }
               try {
                 if (item.assets) {
-                  assets = typeof item.assets === 'string' ? JSON.parse(item.assets) : item.assets;
+                  if (typeof item.assets === 'string') {
+                    const trimmed = item.assets.trim();
+                    if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+                      try {
+                        const parsed = JSON.parse(trimmed);
+                        if (Array.isArray(parsed) && parsed.length > 0) {
+                          assetsVal = parsed[0]?.url || parsed[0]?.name || '';
+                        } else if (parsed && typeof parsed === 'object') {
+                          assetsVal = parsed.url || '';
+                        } else {
+                          assetsVal = trimmed;
+                        }
+                      } catch (e) {
+                        assetsVal = trimmed;
+                      }
+                    } else {
+                      assetsVal = trimmed;
+                    }
+                  } else if (Array.isArray(item.assets)) {
+                    assetsVal = item.assets[0]?.url || item.assets[0] || '';
+                  } else if (typeof item.assets === 'object' && item.assets !== null) {
+                    assetsVal = (item.assets as any).url || '';
+                  } else {
+                    assetsVal = String(item.assets);
+                  }
                 }
               } catch (e) {
                 console.warn('Error parsing assets', e);
@@ -237,7 +338,7 @@ export default function SocialPlanner() {
               return {
                 ...item,
                 shootChecklist: Array.isArray(shootChecklist) ? shootChecklist : [],
-                assets: Array.isArray(assets) ? assets : []
+                assets: assetsVal
               };
             });
 
@@ -314,7 +415,7 @@ export default function SocialPlanner() {
       caption: content.caption,
       cta: content.cta,
       shootChecklist: [...content.shootChecklist],
-      assets: [...content.assets]
+      assets: content.assets || ''
     });
     setNewChecklistItem('');
     setUploadedFiles([]);
@@ -356,7 +457,7 @@ export default function SocialPlanner() {
         caption: formData.caption,
         cta: formData.cta,
         shootChecklist: formData.shootChecklist,
-        assets: [],
+        assets: formData.assets,
         created_at: new Date().toISOString()
       };
       updatedList = [newItem, ...contents];
@@ -368,13 +469,8 @@ export default function SocialPlanner() {
     triggerTestNotification('system');
   };
 
-  const handleDeleteContent = (id: string) => {
-    if (confirm('Hapus rencana konten media sosial ini?')) {
-      const updated = contents.filter(c => c.id !== id);
-      saveContentsToDb(updated);
-      setShowModal(false);
-      setSelectedContent(null);
-    }
+  const handleDeleteContent = (content: SocialContent) => {
+    setContentToDelete(content);
   };
 
   // Quick checklist manipulation inside modal
@@ -630,7 +726,7 @@ export default function SocialPlanner() {
                 caption: '',
                 cta: '',
                 shootChecklist: [],
-                assets: []
+                assets: ''
               });
               setNewChecklistItem('');
               setUploadedFiles([]);
@@ -818,7 +914,7 @@ export default function SocialPlanner() {
                             caption: '',
                             cta: '',
                             shootChecklist: [],
-                            assets: []
+                            assets: ''
                           });
                           setShowModal(true);
                         }}
@@ -1104,7 +1200,7 @@ export default function SocialPlanner() {
                             { id: '1', text: 'Ambil shoot opening hook', done: false },
                             { id: '2', text: 'Rekam visual close up produk', done: false }
                           ],
-                          assets: []
+                          assets: ''
                         });
                         setGeneratorOpen(false);
                         setShowModal(true);
@@ -1307,6 +1403,40 @@ export default function SocialPlanner() {
                       )}
                     </div>
                   </div>
+
+                  {/* Media Assets (Reference Link) */}
+                  <div className="pt-2">
+                    <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Link Referensi Rencana Media</label>
+                    <div className="space-y-2">
+                      <input
+                        type="text"
+                        placeholder="Contoh: https://drive.google.com/... atau https://figma.com/..."
+                        value={formData.assets}
+                        onChange={(e) => setFormData({ ...formData, assets: e.target.value })}
+                        className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white placeholder:text-slate-650 focus:border-brand-purple outline-none font-bold"
+                      />
+                      
+                      {/* Clickable link to preview/review if it starts with http/https */}
+                      {formData.assets && (formData.assets.startsWith('http://') || formData.assets.startsWith('https://')) && (
+                        <div className="flex items-center gap-1.5 px-3 py-2 bg-slate-950 rounded-lg border border-slate-850">
+                          <Play className="w-3 h-3 text-brand-neon shrink-0 animate-pulse" />
+                          <div className="flex-1 min-w-0 flex items-center justify-between gap-2">
+                            <a 
+                              href={formData.assets} 
+                              target="_blank" 
+                              rel="noopener noreferrer" 
+                              className="text-[10.5px] text-brand-neon hover:text-white font-mono truncate hover:underline"
+                            >
+                              {formData.assets}
+                            </a>
+                            <span className="text-[7.5px] uppercase font-black text-slate-500 tracking-widest bg-slate-905 border border-slate-800 px-1.5 py-0.5 rounded-md shrink-0">
+                              Buka Link
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
               </div>
@@ -1317,7 +1447,7 @@ export default function SocialPlanner() {
                   {selectedContent && (
                     <button
                       type="button"
-                      onClick={() => handleDeleteContent(selectedContent.id)}
+                      onClick={() => handleDeleteContent(selectedContent)}
                       className="text-xs text-rose-500 hover:text-rose-400 font-black uppercase tracking-widest px-3 py-1.5 bg-rose-500/5 hover:bg-rose-500/10 rounded-xl transition-all cursor-pointer border border-rose-550/15"
                     >
                       Hapus Plan
@@ -1345,6 +1475,51 @@ export default function SocialPlanner() {
                 </div>
               </div>
             </form>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Custom Delete Confirmation Modal */}
+      {contentToDelete && (
+        <div className="fixed inset-0 z-[100] overflow-y-auto bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <motion.div
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 max-w-sm w-full shadow-2xl relative text-center"
+          >
+            <div className="w-12 h-12 bg-rose-950/50 rounded-full flex items-center justify-center mx-auto mb-4 border border-rose-900/30">
+              <Trash2 className="w-5 h-5 text-rose-500" />
+            </div>
+
+            <h3 className="text-base font-serif font-black text-slate-100 mb-2">
+              Hapus Plan Konten?
+            </h3>
+            <p className="text-xs text-slate-400 mb-6 leading-relaxed">
+              Apakah Anda yakin ingin menghapus rencana konten <strong className="text-slate-200">"{contentToDelete.title}"</strong>? Perubahan ini akan segera disinkronkan ke Google Sheets.
+            </p>
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setContentToDelete(null)}
+                className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-750 text-slate-300 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all cursor-pointer border border-slate-700/50"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const updated = contents.filter(c => c.id !== contentToDelete.id);
+                  saveContentsToDb(updated);
+                  setShowModal(false);
+                  setSelectedContent(null);
+                  setContentToDelete(null);
+                }}
+                className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-[11px] font-black uppercase tracking-wider transition-all shadow-md shadow-rose-600/10 cursor-pointer"
+              >
+                Ya, Hapus
+              </button>
+            </div>
           </motion.div>
         </div>
       )}

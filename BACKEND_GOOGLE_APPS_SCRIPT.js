@@ -152,6 +152,22 @@ function doPost(e) {
   try {
     const payload = JSON.parse(e.postData.contents);
     const action = payload.action;
+
+    // Handle direct file uploads to Google Drive
+    if (action === 'upload_file') {
+      const fileData = payload.file;
+      const folderName = payload.folder || 'General';
+      const rootFolder = getOrCreateFolder(DriveApp.getRootFolder(), 'MorningsApp_Assets');
+      const targetFolder = getOrCreateFolder(rootFolder, folderName);
+      
+      const decoded = Utilities.base64Decode(fileData.base64);
+      const blob = Utilities.newBlob(decoded, fileData.mimeType, fileData.filename);
+      const file = targetFolder.createFile(blob);
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      const directUrl = "https://lh3.googleusercontent.com/d/" + file.getId();
+      return createResponse({ success: true, url: directUrl, filename: fileData.filename });
+    }
+
     const sheetName = payload.sheet;
     let data = processImageFile(payload.data || {}, sheetName);
     const ss = SpreadsheetApp.openById(SPREADSHEET_ID);

@@ -72,6 +72,12 @@ export default function DevTracker() {
   // Task Form Modal State
   const [showModal, setShowModal] = useState(false);
   const [editingTask, setEditingTask] = useState<DevTask | null>(null);
+  const [taskToDelete, setTaskToDelete] = useState<DevTask | null>(null);
+
+  // Drag-and-drop / Touch-dragging states
+  const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
+  const [dragOverCol, setDragOverCol] = useState<string | null>(null);
+  const [touchActiveId, setTouchActiveId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -286,24 +292,81 @@ export default function DevTracker() {
     if (!formData.title.trim()) return;
 
     setLoading(true);
-    let base64Image = formData.referenceImage;
-    let base64File = formData.referenceFile;
+    let finalImageUrl = formData.referenceImage;
+    let finalFileUrl = formData.referenceFile;
     let nameOfFile = formData.fileName;
+
+    const urlEnv = (import.meta as any).env.VITE_GAS_API_URL;
+    const isGasConfigured = urlEnv && !urlEnv.includes('YOUR_SCRIPT_ID');
 
     if (imageFile) {
       try {
-        base64Image = await fileToBase64(imageFile);
+        const base64Data = await fileToBase64(imageFile);
+        if (isGasConfigured) {
+          const parts = base64Data.split(';base64,');
+          const mimeType = parts[0].split(':')[1];
+          const rawBase64 = parts[1];
+
+          const resp = await fetch(urlEnv.trim(), {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({
+              action: 'upload_file',
+              folder: 'DevTracker',
+              file: {
+                base64: rawBase64,
+                mimeType: mimeType,
+                filename: imageFile.name
+              }
+            })
+          }).then(r => r.json());
+
+          if (resp && resp.success && resp.url) {
+            finalImageUrl = resp.url;
+          } else {
+            finalImageUrl = base64Data;
+          }
+        } else {
+          finalImageUrl = base64Data;
+        }
       } catch (err) {
-        console.error('Image base64 convert error:', err);
+        console.error('Image base64 convert / upload error:', err);
       }
     }
 
     if (docFile) {
       try {
-        base64File = await fileToBase64(docFile);
+        const base64Data = await fileToBase64(docFile);
         nameOfFile = docFile.name;
+        if (isGasConfigured) {
+          const parts = base64Data.split(';base64,');
+          const mimeType = parts[0].split(':')[1];
+          const rawBase64 = parts[1];
+
+          const resp = await fetch(urlEnv.trim(), {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({
+              action: 'upload_file',
+              folder: 'DevTracker',
+              file: {
+                base64: rawBase64,
+                mimeType: mimeType,
+                filename: docFile.name
+              }
+            })
+          }).then(r => r.json());
+
+          if (resp && resp.success && resp.url) {
+            finalFileUrl = resp.url;
+          } else {
+            finalFileUrl = base64Data;
+          }
+        } else {
+          finalFileUrl = base64Data;
+        }
       } catch (err) {
-        console.error('File base64 convert error:', err);
+        console.error('File base64 convert / upload error:', err);
       }
     }
 
@@ -317,8 +380,8 @@ export default function DevTracker() {
       category: formData.category,
       isPinned: formData.isPinned,
       referenceLink: formData.referenceLink || undefined,
-      referenceImage: base64Image || undefined,
-      referenceFile: base64File || undefined,
+      referenceImage: finalImageUrl || undefined,
+      referenceFile: finalFileUrl || undefined,
       fileName: nameOfFile || undefined,
       created_at: editingTask ? editingTask.created_at : new Date().toISOString()
     };
@@ -419,13 +482,57 @@ export default function DevTracker() {
   };
 
   const handleDeleteTask = (id: string, name: string) => {
-    if (confirm(`Apakah Anda yakin ingin menghapus data pengembangan "${name}"?`)) {
-      const updated = tasks.filter(t => t.id !== id);
-      setTasks(updated);
-      localStorage.setItem('mornings_dev_tasks', JSON.stringify(updated));
-      addActivityLog(`Menghapus log task: "${name}"`);
-      syncToSheets(updated);
+    const task = tasks.find(t => t.id === id);
+    if (task) {
+      setTaskToDelete(task);
     }
+  };
+
+  // HTML5 Drag handlers & helpers
+  const handleDragStart = (e: React.DragEvent, taskId: string) => {
+    e.dataTransfer.setData("text/plain", taskId);
+    setDraggedTaskId(taskId);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedTaskId(null);
+    setDragOverCol(null);
+  };
+
+  const handleDrop = (e: React.DragEvent, targetStatus: DevTask['status']) => {
+    e.preventDefault();
+    const taskId = e.dataTransfer.getData("text/plain") || draggedTaskId;
+    if (taskId) {
+      const task = tasks.find(t => t.id === taskId);
+      if (task && task.status !== targetStatus) {
+        handleMoveStatus(task, targetStatus);
+      }
+    }
+    setDraggedTaskId(null);
+    setDragOverCol(null);
+  };
+
+  // Mobile Touch handlers & helpers
+  const handleTouchStart = (e: React.TouchEvent, taskId: string) => {
+    setTouchActiveId(taskId);
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent, task: DevTask) => {
+    if (!touchActiveId) return;
+    const touch = e.changedTouches[0];
+    if (touch) {
+      const elem = document.elementFromPoint(touch.clientX, touch.clientY);
+      if (elem) {
+        const col = elem.closest('[data-column-status]');
+        if (col) {
+          const nextStatus = col.getAttribute('data-column-status') as DevTask['status'];
+          if (nextStatus && nextStatus !== task.status) {
+            handleMoveStatus(task, nextStatus);
+          }
+        }
+      }
+    }
+    setTouchActiveId(null);
   };
 
   const handlePinTask = (task: DevTask) => {
@@ -665,7 +772,17 @@ export default function DevTracker() {
             className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start"
           >
             {/* Column 1: Pending */}
-            <div className="bg-slate-100/70 border border-slate-205 rounded-2xl p-4 min-h-[500px]">
+            <div 
+              data-column-status="Pending"
+              onDragOver={(e) => { e.preventDefault(); }}
+              onDragEnter={() => setDragOverCol('Pending')}
+              onDragLeave={() => setDragOverCol(null)}
+              onDrop={(e) => handleDrop(e, 'Pending')}
+              className={cn(
+                "bg-slate-100/70 border rounded-2xl p-4 min-h-[500px] transition-all duration-200",
+                dragOverCol === 'Pending' ? "border-brand-purple bg-brand-purple/[0.02]" : "border-slate-205"
+              )}
+            >
               <div className="flex items-center justify-between border-b border-slate-200 pb-3 mb-4">
                 <div className="flex items-center gap-25">
                   <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
@@ -690,6 +807,11 @@ export default function DevTracker() {
                       onPin={handlePinTask}
                       onMoveRight={() => handleMoveStatus(task, 'On Progress')}
                       renderPriority={renderPriorityBadge} 
+                      onDragStart={handleDragStart}
+                      onDragEnd={handleDragEnd}
+                      onTouchStart={handleTouchStart}
+                      onTouchEnd={handleTouchEnd}
+                      isDragging={draggedTaskId === task.id || touchActiveId === task.id}
                     />
                   ))
                 )}
@@ -697,7 +819,17 @@ export default function DevTracker() {
             </div>
 
             {/* Column 2: On Progress */}
-            <div className="bg-slate-100/70 border border-slate-205 rounded-2xl p-4 min-h-[500px]">
+            <div 
+              data-column-status="On Progress"
+              onDragOver={(e) => { e.preventDefault(); }}
+              onDragEnter={() => setDragOverCol('On Progress')}
+              onDragLeave={() => setDragOverCol(null)}
+              onDrop={(e) => handleDrop(e, 'On Progress')}
+              className={cn(
+                "bg-slate-100/70 border rounded-2xl p-4 min-h-[500px] transition-all duration-200",
+                dragOverCol === 'On Progress' ? "border-brand-purple bg-brand-purple/[0.02]" : "border-slate-205"
+              )}
+            >
               <div className="flex items-center justify-between border-b border-slate-200 pb-3 mb-4">
                 <div className="flex items-center gap-25">
                   <span className="w-2.5 h-2.5 rounded-full bg-sky-500 animate-pulse" />
@@ -723,6 +855,11 @@ export default function DevTracker() {
                       onMoveLeft={() => handleMoveStatus(task, 'Pending')}
                       onMoveRight={() => handleMoveStatus(task, 'Done')}
                       renderPriority={renderPriorityBadge} 
+                      onDragStart={handleDragStart}
+                      onDragEnd={handleDragEnd}
+                      onTouchStart={handleTouchStart}
+                      onTouchEnd={handleTouchEnd}
+                      isDragging={draggedTaskId === task.id || touchActiveId === task.id}
                     />
                   ))
                 )}
@@ -730,7 +867,17 @@ export default function DevTracker() {
             </div>
 
             {/* Column 3: Done */}
-            <div className="bg-slate-100/70 border border-slate-205 rounded-2xl p-4 min-h-[500px]">
+            <div 
+              data-column-status="Done"
+              onDragOver={(e) => { e.preventDefault(); }}
+              onDragEnter={() => setDragOverCol('Done')}
+              onDragLeave={() => setDragOverCol(null)}
+              onDrop={(e) => handleDrop(e, 'Done')}
+              className={cn(
+                "bg-slate-100/70 border rounded-2xl p-4 min-h-[500px] transition-all duration-200",
+                dragOverCol === 'Done' ? "border-brand-purple bg-brand-purple/[0.02]" : "border-slate-205"
+              )}
+            >
               <div className="flex items-center justify-between border-b border-slate-200 pb-3 mb-4">
                 <div className="flex items-center gap-25">
                   <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
@@ -755,6 +902,11 @@ export default function DevTracker() {
                       onPin={handlePinTask}
                       onMoveLeft={() => handleMoveStatus(task, 'On Progress')}
                       renderPriority={renderPriorityBadge} 
+                      onDragStart={handleDragStart}
+                      onDragEnd={handleDragEnd}
+                      onTouchStart={handleTouchStart}
+                      onTouchEnd={handleTouchEnd}
+                      isDragging={draggedTaskId === task.id || touchActiveId === task.id}
                     />
                   ))
                 )}
@@ -837,14 +989,14 @@ export default function DevTracker() {
                               </a>
                             )}
                             {task.referenceImage && (
-                              <button className="p-1 bg-slate-100 text-indigo-550 rounded" title="Memiliki Gambar Acuan">
+                              <a href={task.referenceImage} target="_blank" rel="noopener noreferrer" className="p-1 bg-slate-100 hover:bg-slate-200 text-indigo-550 rounded transition-all cursor-pointer" title="Buka Gambar Acuan">
                                 <ImageIcon className="w-3 h-3 text-brand-purple" />
-                              </button>
+                              </a>
                             )}
                             {task.referenceFile && (
-                              <button className="p-1 bg-slate-100 text-indigo-550 rounded text-[8px] font-black uppercase flex items-center gap-0.5" title={task.fileName || 'Supporting file'}>
+                              <a href={task.referenceFile} target="_blank" rel="noopener noreferrer" className="p-1 bg-slate-100 hover:bg-slate-200 text-indigo-550 rounded text-[8px] font-black uppercase flex items-center gap-0.5 cursor-pointer" title={task.fileName || 'Buka File Pendukung'}>
                                 <FileText className="w-3 h-3 text-brand-purple" />
-                              </button>
+                              </a>
                             )}
                             {!task.referenceLink && !task.referenceImage && !task.referenceFile && <span className="text-slate-400 text-[10px]">-</span>}
                           </div>
@@ -994,13 +1146,33 @@ export default function DevTracker() {
                 {/* Ref Link URL */}
                 <div>
                   <label className="text-[9px] font-black uppercase tracking-widest text-slate-450 block mb-0.5">Tautan / Link Referensi (Contoh Notion, Figma, Website luar)</label>
-                  <input
-                    type="url"
-                    placeholder="https://example.com/ref-plan"
-                    value={formData.referenceLink}
-                    onChange={(e) => setFormData({ ...formData, referenceLink: e.target.value })}
-                    className="w-full px-4 py-2 bg-slate-50 focus:bg-white border border-slate-200 rounded-xl text-[11px] outline-none transition-all placeholder:text-slate-400"
-                  />
+                  <div className="space-y-1.5">
+                    <input
+                      type="url"
+                      placeholder="https://example.com/ref-plan"
+                      value={formData.referenceLink}
+                      onChange={(e) => setFormData({ ...formData, referenceLink: e.target.value })}
+                      className="w-full px-4 py-2 bg-slate-50 focus:bg-white border border-slate-200 rounded-xl text-[11px] outline-none transition-all placeholder:text-slate-400"
+                    />
+                    {formData.referenceLink && (formData.referenceLink.startsWith('http://') || formData.referenceLink.startsWith('https://')) && (
+                      <div className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 rounded-lg border border-slate-200">
+                        <LinkIcon className="w-3.5 h-3.5 text-brand-purple shrink-0" />
+                        <div className="flex-1 min-w-0 flex items-center justify-between gap-2">
+                          <a 
+                            href={formData.referenceLink} 
+                            target="_blank" 
+                            rel="noopener noreferrer" 
+                            className="text-[10px] text-brand-purple hover:text-brand-purple/80 font-mono truncate hover:underline"
+                          >
+                            {formData.referenceLink}
+                          </a>
+                          <span className="text-[7.5px] uppercase font-black text-slate-500 tracking-widest bg-white border border-slate-250 px-1.5 py-0.5 rounded-md shrink-0">
+                            Buka Link
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Upload Section Grid */}
@@ -1070,6 +1242,52 @@ export default function DevTracker() {
           </motion.div>
         </div>
       )}
+
+      {/* Custom Delete Confirmation Modal */}
+      {taskToDelete && (
+        <div className="fixed inset-0 z-[100] overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <motion.div
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-white rounded-3xl p-6 sm:p-8 max-w-sm w-full border border-slate-200 shadow-2xl relative text-center"
+          >
+            <div className="w-12 h-12 bg-rose-50 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Trash2 className="w-5 h-5 text-rose-500" />
+            </div>
+
+            <h3 className="text-base font-serif font-black text-slate-900 mb-2">
+              Hapus Tugas Pengembangan?
+            </h3>
+            <p className="text-xs text-slate-500 mb-6 leading-relaxed">
+              Apakah Anda yakin ingin menghapus data pengembangan <strong className="text-slate-800">"{taskToDelete.title}"</strong>? Tindakan ini akan menyinkronkan perubahan ke Google Sheets.
+            </p>
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setTaskToDelete(null)}
+                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const updated = tasks.filter(t => t.id !== taskToDelete.id);
+                  setTasks(updated);
+                  localStorage.setItem('mornings_dev_tasks', JSON.stringify(updated));
+                  addActivityLog(`Menghapus log task: "${taskToDelete.title}"`);
+                  syncToSheets(updated);
+                  setTaskToDelete(null);
+                }}
+                className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-[11px] font-black uppercase tracking-wider transition-all shadow-md shadow-rose-600/10 cursor-pointer"
+              >
+                Ya, Hapus
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1085,6 +1303,11 @@ interface TaskCardProps {
   onMoveLeft?: () => void;
   onMoveRight?: () => void;
   renderPriority: (p: DevTask['priority']) => React.ReactNode;
+  onDragStart: (e: React.DragEvent, id: string) => void;
+  onDragEnd: () => void;
+  onTouchStart: (e: React.TouchEvent, id: string) => void;
+  onTouchEnd: (e: React.TouchEvent, task: DevTask) => void;
+  isDragging: boolean;
 }
 
 function TaskCard({ 
@@ -1095,14 +1318,27 @@ function TaskCard({
   onPin,
   onMoveLeft,
   onMoveRight,
-  renderPriority 
+  renderPriority,
+  onDragStart,
+  onDragEnd,
+  onTouchStart,
+  onTouchEnd,
+  isDragging
 }: TaskCardProps) {
   return (
-    <div className={cn(
-      "p-4 bg-white border border-slate-200 rounded-2xl shadow-sm hover:shadow-md transition-all relative group flex flex-col justify-between min-h-[170px]",
-      task.isPinned && "border-brand-purple/20 bg-brand-purple/[0.01]",
-      task.status === 'Done' && "bg-slate-50/[0.4] border-slate-150"
-    )}>
+    <div 
+      draggable
+      onDragStart={(e) => onDragStart(e, task.id)}
+      onDragEnd={onDragEnd}
+      onTouchStart={(e) => onTouchStart(e, task.id)}
+      onTouchEnd={(e) => onTouchEnd(e, task)}
+      className={cn(
+        "p-4 bg-white border border-slate-200 rounded-2xl shadow-sm hover:shadow-md transition-all relative group flex flex-col justify-between min-h-[170px] cursor-grab active:cursor-grabbing select-none",
+        task.isPinned && "border-brand-purple/20 bg-brand-purple/[0.01]",
+        task.status === 'Done' && "bg-slate-50/[0.4] border-slate-150",
+        isDragging && "opacity-40 border-dashed border-brand-purple bg-brand-purple/[0.01]"
+      )}
+    >
       {/* Upper row: pin and categorisation tags */}
       <div>
         <div className="flex items-center justify-between mb-2">
@@ -1159,9 +1395,42 @@ function TaskCard({
 
           {/* Reference Indicator icons */}
           <div className="flex items-center gap-1 border-l border-slate-100 pl-2">
-            {task.referenceLink && <LinkIcon className="w-3 h-3 text-brand-purple/70" title="Link Ref Acuan" />}
-            {task.referenceImage && <ImageIcon className="w-3 h-3 text-brand-purple/70" title="Memiliki Contoh Gambar" />}
-            {task.referenceFile && <FileText className="w-3 h-3 text-brand-purple/70" title={`Supporting file: ${task.fileName || 'file'}`} />}
+            {task.referenceLink && (
+              <a 
+                href={task.referenceLink} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="p-1 hover:bg-slate-100 rounded text-brand-purple/70 hover:text-brand-purple transition-all"
+                title="Buka Link Ref Acuan"
+              >
+                <LinkIcon className="w-3 h-3" />
+              </a>
+            )}
+            {task.referenceImage && (
+              <a 
+                href={task.referenceImage} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="p-1 hover:bg-slate-100 rounded text-brand-purple/70 hover:text-brand-purple transition-all"
+                title="Buka Contoh Gambar"
+              >
+                <ImageIcon className="w-3 h-3" />
+              </a>
+            )}
+            {task.referenceFile && (
+              <a 
+                href={task.referenceFile} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="p-1 hover:bg-slate-100 rounded text-brand-purple/70 hover:text-brand-purple transition-all"
+                title={`Buka file: ${task.fileName || 'file'}`}
+              >
+                <FileText className="w-3 h-3" />
+              </a>
+            )}
           </div>
         </div>
 

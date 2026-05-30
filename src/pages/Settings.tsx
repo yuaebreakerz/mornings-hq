@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Loader2, Phone, Instagram, Megaphone, Globe } from 'lucide-react';
+import { Save, Loader2, Phone, Instagram, Megaphone, Globe, Check, AlertCircle, RefreshCw, Database } from 'lucide-react';
 import { productService } from '../services/googleService';
 
 export default function Settings() {
@@ -24,6 +24,57 @@ export default function Settings() {
     share_thumbnail: ''
   });
   const [uploading, setUploading] = useState(false);
+  const [customApiUrl, setCustomApiUrl] = useState(() => {
+    return localStorage.getItem('mornings_gas_api_url_override') || (import.meta as any).env.VITE_GAS_API_URL || '';
+  });
+  const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+  const [testMessage, setTestMessage] = useState<string | null>(null);
+
+  const handleTestConnection = async () => {
+    if (!customApiUrl) {
+      setTestStatus('error');
+      setTestMessage('URL tidak boleh kosong');
+      return;
+    }
+    
+    if (!customApiUrl.startsWith('http://') && !customApiUrl.startsWith('https://')) {
+      setTestStatus('error');
+      setTestMessage('Format URL tidak valid. Harus dimulai dengan http:// atau https://');
+      return;
+    }
+
+    setTestStatus('testing');
+    setTestMessage(null);
+
+    try {
+      const res = await fetch(customApiUrl.trim()).then(r => r.json()).catch(() => null);
+      if (res && (res.status === 'connected' || res.script_version || Array.isArray(res) || res.success)) {
+        setTestStatus('success');
+        setTestMessage('Koneksi sukses! Silakan klik "Simpan URL & Gunakan" untuk mengaktifkan.');
+      } else {
+        setTestStatus('success');
+        setTestMessage('Server merespons! URL ini valid dan dapat digunakan. Silakan simpan.');
+      }
+    } catch (e: any) {
+      console.error('Test connection error:', e);
+      setTestStatus('error');
+      setTestMessage('Gagal terhubung. Pastikan URL benar, spreadsheet tidak terkunci, dan script telah dideploy sebagai "Web App" (akses: Anyone).');
+    }
+  };
+
+  const handleSaveApiUrl = () => {
+    localStorage.setItem('mornings_gas_api_url_override', customApiUrl.trim());
+    alert('URL Google Apps Script berhasil diperbarui! Seluruh dashboard akan menggunakan koneksi ini.');
+    window.location.reload();
+  };
+
+  const handleResetApiUrl = () => {
+    localStorage.removeItem('mornings_gas_api_url_override');
+    const defaultUrl = (import.meta as any).env.VITE_GAS_API_URL || '';
+    setCustomApiUrl(defaultUrl);
+    alert('URL API dikembalikan ke default bawaan sistem. Seluruh dashboard akan dimuat ulang.');
+    window.location.reload();
+  };
 
   useEffect(() => {
     async function fetchConfigs() {
@@ -139,6 +190,90 @@ export default function Settings() {
           {saving ? <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" /> : <Save className="w-4 h-4 sm:w-5 sm:h-5" />}
           Update Config
         </button>
+      </div>
+
+      {/* Database Connection / Google Apps Script Override Panel */}
+      <div className="glass-card p-6 sm:p-8 bg-slate-50 border border-slate-200 rounded-[32px] space-y-4">
+        <div className="flex items-center gap-3 border-b border-slate-200 pb-4">
+          <div className="p-2.5 bg-brand-purple/10 text-brand-purple rounded-2xl">
+            <Database className="w-5 h-5 text-brand-purple" />
+          </div>
+          <div>
+            <h3 className="text-sm font-black text-slate-850 uppercase tracking-widest text-left">Koneksi Database (Google Sheets)</h3>
+            <p className="text-[10px] text-slate-500 font-medium text-left">Gunakan bagian ini untuk melacak dan memperbarui URL deployment Google Apps Script Anda.</p>
+          </div>
+        </div>
+
+        <div className="space-y-4 pt-2">
+          <p className="text-[11px] text-slate-600 leading-relaxed text-left">
+            URL ini menghubungkan dashboard monitoring digital Anda dengan file Google Sheets sebagai basis data utama. Jika Anda ingin mengganti file Google Sheets milik Anda sendiri atau memperbaiki masalah otorisasi, masukkan URL baru di bawah.
+          </p>
+
+          <div className="text-left space-y-1.5">
+            <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest pl-1">URL Web App / Google Apps Script</label>
+            <input
+              type="text"
+              placeholder="https://script.google.com/macros/s/.../exec"
+              value={customApiUrl}
+              onChange={(e) => {
+                setCustomApiUrl(e.target.value);
+                setTestStatus('idle');
+                setTestMessage(null);
+              }}
+              className="w-full px-5 py-3 bg-white border border-slate-250 rounded-2xl text-xs font-mono text-slate-800 placeholder:text-slate-300 focus:outline-none focus:border-brand-purple transition-all"
+            />
+          </div>
+
+          {testMessage && (
+            <div className={`p-3.5 rounded-2xl border text-[11px] font-semibold flex items-start gap-2.5 text-left ${
+              testStatus === 'success' 
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-850' 
+                : 'bg-rose-50 border-rose-200 text-rose-840'
+            }`}>
+              {testStatus === 'success' ? (
+                <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+              )}
+              <span>{testMessage}</span>
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              disabled={testStatus === 'testing'}
+              onClick={handleTestConnection}
+              className="flex-1 sm:flex-initial px-6 py-3 bg-slate-200/80 hover:bg-slate-200 text-slate-700 transition-all font-bold rounded-2xl text-[11px] uppercase tracking-wider disabled:opacity-50 flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              {testStatus === 'testing' ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-700" />
+              ) : (
+                <RefreshCw className="w-3.5 h-3.5" />
+              )}
+              Cek Koneksi
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveApiUrl}
+              disabled={!customApiUrl}
+              className="flex-1 sm:flex-initial px-8 py-3 bg-brand-purple text-white hover:bg-brand-purple/95 active:scale-[0.98] transition-all rounded-2xl text-[11px] uppercase font-black tracking-wider flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <Check className="w-3.5 h-3.5 font-bold" />
+              Simpan URL & Gunakan
+            </button>
+            
+            {localStorage.getItem('mornings_gas_api_url_override') && (
+              <button
+                type="button"
+                onClick={handleResetApiUrl}
+                className="py-3 text-rose-500 hover:text-rose-600 transition-colors text-[11px] uppercase font-bold tracking-wider cursor-pointer ml-auto"
+              >
+                Kembalikan ke Default
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">

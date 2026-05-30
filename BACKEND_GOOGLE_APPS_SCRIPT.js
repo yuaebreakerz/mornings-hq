@@ -3,13 +3,23 @@
  * Pemilik: morningsbysfc@gmail.com
  * Update: Auto-create sheet for Recipes, Orders, & Dev Tasks Sync
  */
-const SCRIPT_VERSION = "3.7";
-const SPREADSHEET_ID = '17-iz1JJwi_huo2a0AIYalenc4Y54IexKwIWk3sizw1E';
+const SCRIPT_VERSION = "3.8";
+const SPREADSHEET_ID = '17-iz1JJwi_huo2a0AIYalenc4Y54IexKwIWk3sizw1E'; // Id default spreadsheet, akan otomatis diabaikan jika di-deploy dari "Extensions > Apps Script" spreadsheet Anda sendiri.
 const DRIVE_FOLDER_NAME = 'MorningsHQ_Uploads';
+
+function getSpreadsheet() {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    if (ss) return ss;
+  } catch (e) {
+    Logger.log("getActiveSpreadsheet() dialihkan karena dijalankan di luar Spreadsheet Container.");
+  }
+  return SpreadsheetApp.openById(SPREADSHEET_ID);
+}
 
 function manualTestExecution() {
   try {
-    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const ss = getSpreadsheet();
     Logger.log("✅ Spreadsheet OK: " + ss.getName());
     const folders = DriveApp.getFoldersByName(DRIVE_FOLDER_NAME);
     let folder = folders.hasNext() ? folders.next() : DriveApp.createFolder(DRIVE_FOLDER_NAME);
@@ -119,9 +129,9 @@ function processImageFile(data, sheetName) {
 }
 
 function doGet(e) {
-  if (!e || !e.parameter) return createResponse({ status: "connected" });
+  if (!e || !e.parameter) return createResponse({ status: "connected", version: SCRIPT_VERSION });
   try {
-    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const ss = getSpreadsheet();
     const sheet = ss.getSheetByName(e.parameter.path);
     if (!sheet) {
       // If reading recipes and not found, return empty array instead of error
@@ -170,7 +180,7 @@ function doPost(e) {
 
     const sheetName = payload.sheet;
     let data = processImageFile(payload.data || {}, sheetName);
-    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const ss = getSpreadsheet();
     let sheet = ss.getSheetByName(sheetName);
     
     if (!sheet) {

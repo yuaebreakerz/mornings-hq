@@ -43,7 +43,7 @@ const navigation = [
   { name: 'Testimonials', href: '/testimonials', icon: MessageSquare },
   { name: 'Dev Tracker', href: '/dev-tracker', icon: Code2 },
   { name: 'Social Planner', href: '/social-planner', icon: CalendarDays },
-  { name: 'Site Config', href: '/settings', icon: Settings },
+  { name: 'Settings & Site Config', href: '/settings', icon: Settings },
 ];
 
 export function DashboardLayout() {

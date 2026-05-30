@@ -28,23 +28,28 @@ export default function Dashboard() {
   const [heroContent, setHeroContent] = useState<any>(null);
 
   const [isOnline, setIsOnline] = useState<boolean | null>(null);
+  const [apiErrorMsg, setApiErrorMsg] = useState<string | null>(null);
   const [allOrders, setAllOrders] = useState<any[]>([]);
   const [filterRange, setFilterRange] = useState<'today' | '7days' | 'month' | 'all'>('all');
 
   useEffect(() => {
     async function fetchDashboardData() {
       try {
+        let lastError: string | null = null;
         const [products, orders, hero] = await Promise.all([
           productService.getAll().catch(err => {
             console.error('Failed to load products:', err);
+            lastError = err.message || String(err);
             return null;
           }),
           productService.getOrders().catch(err => {
             console.error('Failed to load orders:', err);
+            lastError = err.message || String(err);
             return null;
           }),
           productService.getHero().catch(err => {
             console.error('Failed to load hero:', err);
+            lastError = err.message || String(err);
             return null;
           })
         ]);
@@ -52,8 +57,10 @@ export default function Dashboard() {
         // If at least one succeeded, we consider it "online" but maybe partial
         if (products !== null || orders !== null || hero !== null) {
           setIsOnline(true);
+          setApiErrorMsg(null);
         } else {
           setIsOnline(false);
+          setApiErrorMsg(lastError || 'Tidak ada data yang dapat diambil dari server Google Apps Script.');
         }
 
         if (hero) {
@@ -317,6 +324,64 @@ export default function Dashboard() {
           Ekspor CSV
         </button>
       </div>
+
+      {/* API Connection Diagnosis Banner */}
+      {isOnline === false && (
+        <div className="bg-rose-50 border-2 border-rose-100 rounded-3xl p-6 text-left space-y-4 shadow-sm animate-pulse-subtle">
+          <div className="flex items-start gap-4">
+            <div className="p-3 bg-rose-100 text-rose-800 rounded-2xl shrink-0">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-sm font-black text-rose-950 uppercase tracking-wider">Deteksi Gangguan Koneksi API</h3>
+              <p className="text-xs text-rose-700 leading-relaxed font-semibold">
+                Aplikasi gagal berkomunikasi dengan server Google Apps Script Anda. Silakan ikuti petunjuk diagnostik di bawah ini untuk mengaktifkannya kembali.
+              </p>
+            </div>
+          </div>
+          
+          <div className="bg-white/80 rounded-2xl p-4 border border-rose-150 font-mono text-[11px] text-rose-800 space-y-1">
+            <div className="font-bold uppercase tracking-wider text-rose-950">Detail Pesan Error:</div>
+            <div className="whitespace-pre-wrap">{apiErrorMsg || 'Failed to fetch (Respons CORS diblokir / Server tidak menjawab/mungkin URL salah)'}</div>
+          </div>
+
+          <div className="pt-2 text-xs text-slate-700 space-y-3">
+            <div className="font-bold text-slate-900 uppercase text-[10px] tracking-widest flex items-center gap-1.5">
+              <span>📋 Langkah Solusi Mandiri</span>
+            </div>
+            <ul className="space-y-2.5 pl-1.5 leading-relaxed text-[11px] sm:text-xs">
+              <li className="flex gap-2">
+                <span className="font-serif font-black text-rose-600 bg-rose-100/60 w-5 h-5 rounded-full flex items-center justify-center shrink-0 text-xs">1</span>
+                <div>
+                  <span className="font-black text-slate-850">Ganti Deployment ID & Setel Hak Akses (Langkah Terpenting)</span>:<br />
+                  Buka editor Google Apps Script Anda, lalu klik tombol biru <span className="font-bold text-brand-purple">Deploy &gt; New Deployment</span> di kanan atas. Pastikan konfigurasi Anda:
+                  <ul className="list-disc list-inside ml-2 mt-1 space-y-0.5 text-slate-650 font-medium">
+                    <li><span className="font-bold">Execute as</span>: pilih <span className="font-bold">"Me" (Email Anda)</span></li>
+                    <li><span className="font-bold">Who has access</span>: pilih <span className="font-bold">"Anyone"</span> (Jika dipilih "Only myself" atau "Anyone with Google Account", browser akan memblokir respon CORS dan melarang login).</li>
+                  </ul>
+                  Klik <span className="font-bold">Deploy</span>, salin URL Web App yang baru, lalu simpan di menu pengaturan.
+                </div>
+              </li>
+              <li className="flex gap-2">
+                <span className="font-serif font-black text-rose-600 bg-rose-100/60 w-5 h-5 rounded-full flex items-center justify-center shrink-0 text-xs">2</span>
+                <div>
+                  <span className="font-black text-slate-850">Masukkan atau Perbarui URL Baru di Menu Pengaturan</span>:<br />
+                  Pastikan tautan yang Anda simpan di halaman <span className="font-bold">Settings</span> aplikasi ini berakhiran dengan <span className="font-mono bg-rose-100 px-1 py-0.2 rounded text-[10px] text-rose-700 font-bold">/exec</span> (bukan berakhir dengan <span className="font-mono bg-rose-100 px-1 py-0.2 rounded text-[10px] text-rose-700">/dev</span> atau <span className="font-mono bg-rose-100 px-1 py-0.2 rounded text-[10px] text-rose-700">/edit</span> karena tipe itu tidak mengizinkan akses luar).
+                </div>
+              </li>
+              <li className="flex gap-2">
+                <span className="font-serif font-black text-rose-600 bg-rose-100/60 w-5 h-5 rounded-full flex items-center justify-center shrink-0 text-xs">3</span>
+                <div>
+                  <span className="font-black text-slate-850">Lakukan Otorisasi Akses Google spreadsheet Anda</span>:<br />
+                  Buka editor Apps Script Anda, di panel kiri atas pilih fungsi <span className="font-mono bg-slate-105 px-1 py-0.2 rounded text-[10px] text-brand-purple font-bold">doGet</span>, kemudian klik tombol <span className="font-bold">"▷ Run"</span> sekali. Google akan memunculkan menu perizinan, silakan klik <span className="font-bold">"Review Permissions"</span> dan izinkan akun Anda untuk mengakses Google Sheet & Drive Anda sendiri.
+                </div>
+              </li>
+            </ul>
+          </div>
+        </div>
+      )}
 
       {/* Financial & Best-Seller Analytics Row */}
       <div className="grid grid-cols-12 gap-6">

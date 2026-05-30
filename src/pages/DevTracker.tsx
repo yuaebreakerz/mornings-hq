@@ -148,7 +148,7 @@ export default function DevTracker() {
       // Since path can be anything in request(), we can make a custom call.
       // However to keep it 100% resilient and avoid breaking when 'dev_tasks' sheet does not exist in the user's spreadsheet,
       // we merge it beautifully with localStorage. If fetching sheets throws an error, we keep 'local' mode.
-      const urlEnv = (import.meta as any).env.VITE_GAS_API_URL;
+      const urlEnv = localStorage.getItem('mornings_gas_api_url_override') || (import.meta as any).env.VITE_GAS_API_URL;
       if (urlEnv && !urlEnv.includes('YOUR_SCRIPT_ID')) {
         // Let's query 'dev_tasks' sheet via GAS
         const result = await fetch(`${urlEnv.trim()}?path=dev_tasks&action=read&cb=${Date.now()}`)
@@ -249,7 +249,7 @@ export default function DevTracker() {
 
   const syncToSheets = async (currentTasksList: DevTask[]) => {
     setIsSyncing(true);
-    const urlEnv = (import.meta as any).env.VITE_GAS_API_URL;
+    const urlEnv = localStorage.getItem('mornings_gas_api_url_override') || (import.meta as any).env.VITE_GAS_API_URL;
     if (urlEnv && !urlEnv.includes('YOUR_SCRIPT_ID')) {
       try {
         // We write the collection of tasks using a batch action to path table 'dev_tasks'
@@ -296,7 +296,7 @@ export default function DevTracker() {
     let finalFileUrl = formData.referenceFile;
     let nameOfFile = formData.fileName;
 
-    const urlEnv = (import.meta as any).env.VITE_GAS_API_URL;
+    const urlEnv = localStorage.getItem('mornings_gas_api_url_override') || (import.meta as any).env.VITE_GAS_API_URL;
     const isGasConfigured = urlEnv && !urlEnv.includes('YOUR_SCRIPT_ID');
 
     if (imageFile) {

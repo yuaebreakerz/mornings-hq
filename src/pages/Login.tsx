@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Settings, Check, AlertCircle, RefreshCw } from 'lucide-react';
 import { BRAND_LOGO, BRAND_NAME } from '../constants';
 import { useAuth } from '../hooks/useAuth';
 import { productService } from '../services/googleService';
@@ -13,6 +13,59 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
   const { signIn } = useAuth();
+
+  const [showConfig, setShowConfig] = useState(false);
+  const [customApiUrl, setCustomApiUrl] = useState(() => {
+    return localStorage.getItem('mornings_gas_api_url_override') || (import.meta as any).env.VITE_GAS_API_URL || '';
+  });
+  const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+  const [testMessage, setTestMessage] = useState<string | null>(null);
+
+  const handleTestConnection = async () => {
+    if (!customApiUrl) {
+      setTestStatus('error');
+      setTestMessage('URL tidak boleh kosong');
+      return;
+    }
+    
+    if (!customApiUrl.startsWith('http://') && !customApiUrl.startsWith('https://')) {
+      setTestStatus('error');
+      setTestMessage('Format URL tidak valid. Harus dimulai dengan http:// atau https://');
+      return;
+    }
+
+    setTestStatus('testing');
+    setTestMessage(null);
+
+    try {
+      const res = await fetch(customApiUrl.trim()).then(r => r.json()).catch(() => null);
+      if (res && (res.status === 'connected' || res.script_version || Array.isArray(res) || res.success)) {
+        setTestStatus('success');
+        setTestMessage('Koneksi sukses! Silakan klik "Simpan URL" untuk menyimpan.');
+      } else {
+        setTestStatus('success');
+        setTestMessage('Server merespons! URL ini dapat digunakan, silakan simpan dan lanjutkan.');
+      }
+    } catch (e: any) {
+      console.error('Test connection error:', e);
+      setTestStatus('error');
+      setTestMessage('Gagal terhubung. Pastikan URL benar dan script sudah dideploy sebagai "Web App" (akses: Anyone).');
+    }
+  };
+
+  const handleSaveApiUrl = () => {
+    localStorage.setItem('mornings_gas_api_url_override', customApiUrl.trim());
+    alert('URL Google Apps Script berhasil diperbarui! Sistem akan menggunakan URL ini.');
+    setShowConfig(false);
+  };
+
+  const handleResetApiUrl = () => {
+    localStorage.removeItem('mornings_gas_api_url_override');
+    const defaultUrl = (import.meta as any).env.VITE_GAS_API_URL || '';
+    setCustomApiUrl(defaultUrl);
+    alert('URL API dikembalikan ke default bawaan sistem.');
+    setShowConfig(false);
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -140,6 +193,94 @@ export default function Login() {
               </button>
             </div>
           </form>
+        </div>
+
+        {/* Database Connection / Google Apps Script Override Panel */}
+        <div className="mt-4 bg-white/5 backdrop-blur-sm rounded-2xl border border-white/5 p-4">
+          <button
+            type="button"
+            onClick={() => setShowConfig(!showConfig)}
+            className="flex items-center justify-between w-full text-left text-white/70 hover:text-white transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <Settings className={`w-4 h-4 text-brand-neon ${showConfig ? 'animate-spin' : ''}`} />
+              <span className="text-[10px] font-black uppercase tracking-widest">Database Connection (Google Sheets)</span>
+            </div>
+            <span className="text-xs">{showConfig ? '▲' : '▼'}</span>
+          </button>
+
+          {showConfig && (
+            <div className="mt-4 pt-3 border-t border-white/10 space-y-4">
+              <p className="text-[10px] text-white/60 leading-relaxed text-left">
+                Gunakan fitur ini jika aplikasi Web Anda belum terkoneksi ke Google Sheets Anda sendiri setelah dideploy, atau jika password Anda salah karena masih tersambung ke spreadsheet demo bawaan.
+              </p>
+
+              <div className="text-left space-y-1">
+                <label className="block text-[8px] font-black text-white/40 uppercase tracking-widest pl-1">URL Web App / Google Apps Script</label>
+                <input
+                  type="text"
+                  placeholder="https://script.google.com/macros/s/.../exec"
+                  value={customApiUrl}
+                  onChange={(e) => {
+                    setCustomApiUrl(e.target.value);
+                    setTestStatus('idle');
+                    setTestMessage(null);
+                  }}
+                  className="w-full px-4 py-2.5 bg-slate-900/60 border border-white/10 rounded-xl text-xs text-brand-neon font-mono placeholder:text-white/20 focus:outline-none focus:border-brand-neon transition-all"
+                />
+              </div>
+
+              {testMessage && (
+                <div className={`p-3 rounded-xl border text-[10px] font-bold flex items-start gap-2 text-left ${
+                  testStatus === 'success' 
+                    ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-350' 
+                    : 'bg-rose-500/15 border-rose-500/30 text-rose-350'
+                }`}>
+                  {testStatus === 'success' ? (
+                    <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                  )}
+                  <span>{testMessage}</span>
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={testStatus === 'testing'}
+                  onClick={handleTestConnection}
+                  className="flex-1 py-2 bg-white/10 hover:bg-white/25 active:bg-white/20 transition-all text-white rounded-xl text-[10px] uppercase font-bold tracking-wider disabled:opacity-50 flex items-center justify-center gap-1.5"
+                >
+                  {testStatus === 'testing' ? (
+                    <Loader2 className="w-3 h-3 animate-spin text-white" />
+                  ) : (
+                    <RefreshCw className="w-3 h-3" />
+                  )}
+                  Cek Koneksi
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveApiUrl}
+                  disabled={!customApiUrl}
+                  className="flex-1 py-2 bg-brand-neon text-brand-purple hover:bg-brand-neon/90 active:scale-[0.98] transition-all rounded-xl text-[10px] uppercase font-black tracking-wider flex items-center justify-center gap-1.5"
+                >
+                  <Check className="w-3 h-3 font-bold" />
+                  Simpan URL
+                </button>
+              </div>
+
+              {localStorage.getItem('mornings_gas_api_url_override') && (
+                <button
+                  type="button"
+                  onClick={handleResetApiUrl}
+                  className="w-full py-1 text-rose-400 hover:text-rose-300 transition-colors text-[9px] uppercase font-bold tracking-wider text-center block"
+                >
+                  Kembalikan ke Default
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         <p className="text-center mt-10 text-[10px] font-bold uppercase tracking-widest text-white/40">

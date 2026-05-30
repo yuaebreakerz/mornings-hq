@@ -131,7 +131,7 @@ export default function SocialPlanner() {
     if (filesArray.length === 0) return;
 
     setUploadingAsset(true);
-    const urlEnv = (import.meta as any).env.VITE_GAS_API_URL;
+    const urlEnv = localStorage.getItem('mornings_gas_api_url_override') || (import.meta as any).env.VITE_GAS_API_URL;
     const isGasConfigured = urlEnv && !urlEnv.includes('YOUR_SCRIPT_ID');
 
     for (const file of filesArray) {
@@ -194,7 +194,7 @@ export default function SocialPlanner() {
   // Sync content to Google Sheets
   const syncToSheets = async (currentList: SocialContent[]) => {
     setIsSyncing(true);
-    const urlEnv = (import.meta as any).env.VITE_GAS_API_URL;
+    const urlEnv = localStorage.getItem('mornings_gas_api_url_override') || (import.meta as any).env.VITE_GAS_API_URL;
     if (urlEnv && !urlEnv.includes('YOUR_SCRIPT_ID')) {
       try {
         await fetch(urlEnv.trim() + '?path=social_planner', {
@@ -286,7 +286,7 @@ export default function SocialPlanner() {
       }
 
       // 2. Load and sync from Google Sheets database
-      const urlEnv = (import.meta as any).env.VITE_GAS_API_URL;
+      const urlEnv = localStorage.getItem('mornings_gas_api_url_override') || (import.meta as any).env.VITE_GAS_API_URL;
       if (urlEnv && !urlEnv.includes('YOUR_SCRIPT_ID')) {
         try {
           const result = await fetch(`${urlEnv.trim()}?path=social_planner&action=read&cb=${Date.now()}`)

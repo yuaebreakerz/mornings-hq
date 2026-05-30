@@ -7,11 +7,16 @@
  * 3. API: Google Apps Script (POST method with action dispatcher)
  */
 
-const API_URL = (import.meta as any).env.VITE_GAS_API_URL;
+export function getApiUrl() {
+  const localUrl = localStorage.getItem('mornings_gas_api_url_override');
+  if (localUrl) return localUrl;
+  return (import.meta as any).env.VITE_GAS_API_URL || '';
+}
 
 async function request(path: string, method: 'GET' | 'POST' = 'GET', data: any = null) {
+  const API_URL = getApiUrl();
   if (!API_URL || API_URL.includes('YOUR_SCRIPT_ID')) {
-    throw new Error('Google Apps Script URL belum dikonfigurasi di .env');
+    throw new Error('Google Apps Script URL belum dikonfigurasi di .env atau Pengaturan.');
   }
 
   try {
